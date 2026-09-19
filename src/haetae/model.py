@@ -26,7 +26,9 @@ def pack_question(tokenizer, state, instructions, options, max_len=8192):
     """Tokenize one packed question.
 
     Returns input_ids, attention_mask, and the token index of each
-    option's marker [SEP].
+    option's marker [SEP]. All options must survive: when space is
+    tight the *state* is truncated, never the candidate set — a
+    dropped option would silently corrupt the answer space.
     """
     enc_state = tokenizer(state, add_special_tokens=False)["input_ids"]
     enc_instr = tokenizer(instructions, add_special_tokens=False)["input_ids"]
@@ -35,7 +37,15 @@ def pack_question(tokenizer, state, instructions, options, max_len=8192):
     sep = tokenizer.sep_token_id
     cls = tokenizer.cls_token_id
 
-    ids = [cls] + enc_state + [sep] + enc_instr
+    # Budget: [CLS] + state + [SEP] + instructions + per-option ([SEP]+tokens)
+    tail = sum(1 + len(o) for o in enc_opts)
+    state_budget = max_len - (2 + len(enc_instr) + tail)
+    if state_budget < 0:
+        # Even with an empty state the question+options do not fit.
+        # Truncate instructions, then longest options, as a last resort.
+        enc_instr = enc_instr[: max(0, max_len - 2 - tail)]
+        state_budget = 0
+    ids = [cls] + enc_state[:state_budget] + [sep] + enc_instr
     option_pos = []
     for opt in enc_opts:
         ids.append(sep)
@@ -76,6 +86,7 @@ def collate(tokenizer, records, max_len=8192):
     """Pack a list of records into model inputs (dynamic padding)."""
     packed = [pack_question(tokenizer, r["state"], r["instructions"],
                             r["options"], max_len) for r in records]
+    dropped = [len(p) != len(r["options"]) for (ids, p), r in zip(packed, records)]
     maxlen = max(len(ids) for ids, _ in packed)
     B = len(packed)
     input_ids = torch.full((B, maxlen), tokenizer.pad_token_id, dtype=torch.long)
@@ -92,6 +103,7 @@ def collate(tokenizer, records, max_len=8192):
         "option_pos": torch.tensor(flat_pos, dtype=torch.long),
         "group_ptr": torch.tensor(group_ptr, dtype=torch.long),
         "n_options": [len(p) for _, p in packed],
+        "dropped_options": dropped,
     }
 
 

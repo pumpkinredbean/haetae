@@ -97,6 +97,12 @@ def main():
                 break
             recs = train[i:i + args.batch]
             batch = collate(tok, recs, args.max_len)
+            if any(batch["dropped_options"]):
+                keep = [r for r, d in zip(recs, batch["dropped_options"]) if not d]
+                if not keep:
+                    continue
+                recs = keep
+                batch = collate(tok, recs, args.max_len)
             logits = model(
                 batch["input_ids"].to(device),
                 batch["attention_mask"].to(device),
