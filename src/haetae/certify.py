@@ -37,7 +37,14 @@ def collect_logits(model, tok, records, device, max_len, batch):
 
     out = []
     for i in range(0, len(records), batch):
-        b = collate(tok, records[i:i + batch], max_len)
+        recs = records[i:i + batch]
+        b = collate(tok, recs, max_len)
+        keep = [k for k, d in enumerate(b["dropped_options"]) if not d]
+        if len(keep) < len(recs):
+            recs = [recs[k] for k in keep]
+            if not recs:
+                continue
+            b = collate(tok, recs, max_len)
         lg = model(b["input_ids"].to(device), b["attention_mask"].to(device),
                    b["option_pos"].to(device), b["group_ptr"].to(device))
         out += [l.cpu() for l in lg]

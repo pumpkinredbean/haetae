@@ -222,11 +222,14 @@ def load_helpsteer2(split="train", limit=None) -> Iterator[dict]:
         if limit and i >= limit:
             break
         state = f"PROMPT: {r['prompt']}\n\nRESPONSE: {r['response']}"
+        import hashlib
+        parent = "helpsteer2:prompt:" + hashlib.sha256(
+            r["prompt"].encode("utf-8")).hexdigest()[:16]
         for a in attrs:
             rec = _row(state, "score",
                        f"Rate the {a} of the response to the prompt.",
                        levels, label=int(r[a]), source=f"helpsteer2_{a}")
-            rec["parent"] = f"hs2-{i}"
+            rec["parent"] = parent
             yield rec
 
 

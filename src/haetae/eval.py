@@ -26,15 +26,24 @@ def ece(confs, correct, n_bins=15):
 
 @torch.no_grad()
 def predict(model, tok, records, device, max_len=1024, batch=16, temperature=1.0):
-    """Return per-record probability tensors."""
-    probs = []
+    """Return per-record probability tensors.
+
+    Records whose candidate set cannot fit max_len are returned as
+    None at their original index; callers must handle them.
+    """
+    probs = [None] * len(records)
     for i in range(0, len(records), batch):
         recs = records[i:i + batch]
         b = collate(tok, recs, max_len)
+        keep = [k for k, d in enumerate(b["dropped_options"]) if not d]
+        if not keep:
+            continue
+        recs_k = [recs[k] for k in keep]
+        b = collate(tok, recs_k, max_len)
         logits = model(b["input_ids"].to(device), b["attention_mask"].to(device),
                        b["option_pos"].to(device), b["group_ptr"].to(device))
-        for lg in logits:
-            probs.append(F.softmax(lg / temperature, dim=-1).cpu())
+        for k, lg in zip(keep, logits):
+            probs[i + k] = F.softmax(lg / temperature, dim=-1).cpu()
     return probs
 
 
@@ -46,7 +55,11 @@ def evaluate(model, tok, records, device, max_len=1024, batch=16, temperature=1.
     dt = time.time() - t0
     per_source = {}
     confs, correct = [], []
+    excluded = 0
     for r, p in zip(records, probs):
+        if p is None:
+            excluded += 1
+            continue
         pred = int(p.argmax())
         ok = int(pred == r["label"]) if r["label"] is not None else 0
         conf = float(p.max())
@@ -57,7 +70,8 @@ def evaluate(model, tok, records, device, max_len=1024, batch=16, temperature=1.
         s[1] += 1
     acc = sum(correct) / max(1, len(correct))
     print(f"accuracy {acc:.3f}  ece {ece(confs, correct):.3f}  "
-          f"{dt:.1f}s for {len(records)} ({1000 * dt / max(1, len(records)):.0f}ms/rec)")
+          f"{dt:.1f}s for {len(records)} ({1000 * dt / max(1, len(records)):.0f}ms/rec)"
+          + (f"  excluded {excluded}" if excluded else ""))
     for k, (c, n) in sorted(per_source.items()):
         print(f"  {k}: {c}/{n} = {c / n:.3f}")
     return {"accuracy": acc, "ece": ece(confs, correct)}
@@ -76,7 +90,7 @@ def stress_permutation(model, tok, records, device, max_len=1024, batch=16,
 
     rng = random.Random(seed)
     base = predict(model, tok, records, device, max_len, batch)
-    same_answer, mean_tv = 0, 0.0
+    same_answer, mean_tv, compared = 0, 0.0, 0
     for _ in range(n_perms):
         shuffled, remap = [], []
         for r in records:
@@ -89,13 +103,16 @@ def stress_permutation(model, tok, records, device, max_len=1024, batch=16,
             remap.append(idx)
         perm = predict(model, tok, shuffled, device, max_len, batch)
         for r, p0, p1, idx in zip(records, base, perm, remap):
+            if p0 is None or p1 is None:
+                continue
+            compared += 1
             orig_answer = int(p0.argmax())
             perm_answer_orig_idx = idx[int(p1.argmax())]
             same_answer += int(orig_answer == perm_answer_orig_idx)
             tv = 0.5 * sum(abs(float(p0[j]) - float(p1[idx.index(j)]))
                            for j in range(len(idx)))
             mean_tv += tv
-    n = len(records) * n_perms
+    n = max(1, compared)
     print(f"permutation: same answer {same_answer}/{n} = {same_answer / n:.3f}  "
           f"mean TV distance {mean_tv / n:.4f}")
     return {"same_answer": same_answer / n, "mean_tv": mean_tv / n}
@@ -131,6 +148,8 @@ def stress_option_perturbation(model, tok, records, device, max_len=1024,
         d = dropped[i]
         p1 = pert[i]
         i += 1
+        if p0 is None or p1 is None:
+            continue
         n += 1
         keep = [j for j in range(len(r["options"])) if j != d]
         p0r = torch.tensor([float(p0[j]) for j in keep])

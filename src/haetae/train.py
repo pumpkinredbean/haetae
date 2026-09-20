@@ -63,7 +63,7 @@ def permute_choice(rec, rng):
     same option order — without this the model can learn 'this task's
     second slot'. Score keeps ordinal order; noul keeps 'yes' first.
     """
-    if rec["type"] != "choice" or len(rec["options"]) < 3:
+    if rec["type"] != "choice" or len(rec["options"]) < 2:
         return rec
     perm = list(range(len(rec["options"])))
     rng.shuffle(perm)
@@ -142,6 +142,7 @@ def main():
     skipped = 0
     while step < args.steps:
         random.shuffle(train)
+        updates_this_pass = 0
         for i in range(0, len(train), args.batch):
             if step >= args.steps:
                 break
@@ -168,9 +169,13 @@ def main():
             sched.step()
             opt.zero_grad(set_to_none=True)
             step += 1
+            updates_this_pass += 1
             if step % 25 == 0:
                 print(f"step {step}/{args.steps} loss {loss.item():.4f} "
                       f"({(time.time() - t0) / step:.2f}s/step, skipped {skipped})")
+        if updates_this_pass == 0:
+            print("no trainable records survived a full pass — stopping")
+            break
 
     import os
     os.makedirs(args.out, exist_ok=True)

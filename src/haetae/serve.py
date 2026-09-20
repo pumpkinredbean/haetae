@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from transformers import AutoTokenizer
 
@@ -52,12 +52,18 @@ def _options(q: Question):
 @app.post("/v1/systemone")
 def systemone(req: Req):
     state = req.state if isinstance(req.state, str) else str(req.state)
+    if not req.questions:
+        raise HTTPException(422, "empty questions")
     nouls, choices, scores = {}, {}, {}
     # All questions in one batch — one forward pass for the request.
     items = [(name, q, *_options(q)) for name, q in req.questions.items()]
     recs = [{"state": state, "instructions": q.instructions, "options": opts}
             for name, q, opts, names in items]
     b = collate(_tok, recs)
+    if any(b["dropped_options"]):
+        bad = [name for (name, *_), d in zip(items, b["dropped_options"]) if d]
+        raise HTTPException(422, {"error": "question does not fit context",
+                                  "questions": bad})
     with torch.no_grad():
         logits_list = _model(b["input_ids"].to(_device), b["attention_mask"].to(_device),
                              b["option_pos"].to(_device), b["group_ptr"].to(_device))
