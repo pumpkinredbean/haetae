@@ -193,16 +193,30 @@ The metadata-only parent audit reconstructed 19,945 consumed parent keys and ins
 
 ChatGPT 6 Pro returned `MEASUREMENT ACCEPT` for `ee3d22a` and `11a1c62`. Its controlled probes confirmed inclusive conformal ties, frozen-runtime rejection before synthetic C inference, one-time reusable prediction artifacts, separate annotation-target and hard-consensus reliability, parent isolation, semantic tie actions, ontology-safe macro-F1, and Unicode JSONL handling. It did not open real role C or independently verify the production overlap counts.
 
-The accepted role A/B fitting job started at 2026-09-20 17:36 KST. It does not read role C.
+The accepted role A/B fitting job ran from 2026-09-20 17:36 KST to 17:42 KST. It did not deserialize role C or run C inference.
 
 ```bash
 cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-v3m4-fit "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.measure fit --plan evaluations/v3-micro4 --run-dir runs/v3-micro4 --device mps --batch 4 2>&1 | tee -a measure_v3_micro4_fit.log'"
 ```
 
-- tmux session: `haetae-v3m4-fit`
-- log: `/Users/minkyu/workspace/haetae/measure_v3_micro4_fit.log`
-- expected outputs: `evaluations/v3-micro4/predictions-A.jsonl`, `predictions-B.jsonl`, and `frozen-policy.json`
+- policy SHA-256: `0a5e0b2a9c271599610cdd6bd1cb8f0f597eef638ac27ec89924130be4f78fb8`
+- fitted temperature: `1.6589349227635701`
+- role A predictions: 7,973 accepted of 7,973, SHA-256 `583c48ab09fa8d6e800b8e30e0c2b633b0f8ae041ef1b5eb176bb5163e9a14b2`
+- role B predictions: 7,974 accepted of 7,974, SHA-256 `be1fa782eb9fa92df61eb9585cb39c74d5015adc7e42af26d143a19daa5aa0c0`
+- the frozen policy contains 18 formal cells and 54 simultaneous selective-risk bounds;
+- calibration artifact SHA-256: `e3e2edce6d18024e4de2f8a2e5a32602225a2a4f030874572ead54a4556cb816`
+- independent validation recomputed the policy and file digests, checked all logits and checkpoint bindings, and confirmed that no C prediction, stress, latency, or metric output existed.
+
+The explicitly gated role C evaluation is scheduled from 2026-09-20 17:46 KST. Its prediction, stress, and latency stages publish separate digest-bound artifacts so a terminated process can resume without recomputing completed stages.
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-v3m4-eval "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.measure evaluate --plan evaluations/v3-micro4 --run-dir runs/v3-micro4 --device mps --batch 4 --allow-certification 2>&1 | tee -a measure_v3_micro4_eval.log'"
+```
+
+- tmux session: `haetae-v3m4-eval`
+- log: `/Users/minkyu/workspace/haetae/measure_v3_micro4_eval.log`
 
 All 70 repository tests pass. A HelpSteer2 mechanics run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News mechanics run exercised raw and scaled permutation, controlled removal, baselines, paired metrics, and latency. These are mechanics smokes, not quality results.
 
@@ -245,7 +259,7 @@ An exact-state audit against the baseline's immutable train and internal-validat
 
 ## Next actions
 
-1. Complete the active role A/B policy fit, validate its artifacts, then run the explicitly gated role C evaluation.
+1. Complete and validate the active role C evaluation.
 2. Obtain an exact-commit start decision from ChatGPT 6 Pro for `2485f24`.
 3. Run a real shared-state MPS memory and exact-resume smoke after the baseline measurement releases the accelerator.
 4. Start the shared-state MPS run only after its review accepts the implementation and the baseline releases the accelerator.
