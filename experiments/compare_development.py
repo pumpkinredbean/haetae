@@ -1,4 +1,4 @@
-"""Compare two frozen development reports with paired parent bootstrap intervals."""
+"""Compare two frozen development reports with paired parent uncertainty."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ import argparse
 import hashlib
 import json
 import math
+import platform
 import random
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 
@@ -17,9 +19,15 @@ from haetae.checkpoint import atomic_json_save
 from experiments.comparison_protocol import (
     common_clean_predictions,
     load_comparison_plan,
+    request_state_sha256,
+    training_clean_calibration_predictions,
+    validate_suite_binding,
 )
-from experiments.evaluate_shared import canonical_report_sha256
-from experiments.kev_adapter import file_sha256
+from experiments.evaluate_shared import (
+    canonical_report_sha256,
+    fit_source_balanced_temperature,
+)
+from experiments.kev_adapter import file_sha256, load_frozen_split
 
 
 SPLITS = {
@@ -27,6 +35,8 @@ SPLITS = {
     "transfer": "transfer_development",
     "korean": "korean_development",
 }
+SUPPORTED_TYPES = {"choice", "noul", "score"}
+QUANTILE_METHOD = "inverse empirical CDF with nearest-rank endpoints"
 
 
 def load_report(path: str | Path) -> dict:
@@ -38,6 +48,8 @@ def load_report(path: str | Path) -> dict:
         raise ValueError(f"development report does not attest a closed test: {path}")
     if canonical_report_sha256(report) != report.get("report_sha256"):
         raise ValueError(f"development report digest is invalid: {path}")
+    if not isinstance(report.get("predictions"), dict):
+        raise ValueError(f"development report predictions are missing: {path}")
     return report
 
 
@@ -50,16 +62,9 @@ def prediction_key(prediction: dict) -> tuple:
     )
 
 
-def parent_key(prediction: dict) -> str:
-    parent = (
-        prediction.get("group_id")
-        or prediction.get("request_id")
-        or "state:" + prediction["state_sha256"]
-    )
-    return f'{prediction["source"]}\0{parent}'
-
-
 def index_predictions(predictions: list[dict]) -> dict[tuple, dict]:
+    if not isinstance(predictions, list):
+        raise ValueError("predictions must be a list")
     indexed = {}
     for prediction in predictions:
         key = prediction_key(prediction)
@@ -69,6 +74,34 @@ def index_predictions(predictions: list[dict]) -> dict[tuple, dict]:
     return indexed
 
 
+def validate_prediction(prediction: dict, label: str) -> None:
+    options = prediction.get("options")
+    option_keys = prediction.get("option_keys")
+    if not isinstance(options, list) or len(options) < 2:
+        raise ValueError(f"{label} needs at least two options")
+    if not isinstance(option_keys, list) or len(option_keys) != len(options):
+        raise ValueError(f"{label} option keys do not match its options")
+    if prediction.get("type") not in SUPPORTED_TYPES:
+        raise ValueError(f"{label} has an unsupported primitive")
+    target_label = prediction.get("label")
+    if (
+        type(target_label) is not int
+        or target_label < 0
+        or target_label >= len(options)
+    ):
+        raise ValueError(f"{label} has an invalid hard label")
+    logits = prediction.get("logits")
+    if not isinstance(logits, list) or len(logits) != len(options):
+        raise ValueError(f"{label} logits do not match the option count")
+    try:
+        finite_logits = all(math.isfinite(float(value)) for value in logits)
+    except (TypeError, ValueError):
+        finite_logits = False
+    if not finite_logits:
+        raise ValueError(f"{label} logits are not finite numbers")
+    target_distribution(prediction)
+
+
 def validate_pair(baseline: dict, shared: dict) -> None:
     fields = (
         "group_id", "source", "type", "options", "option_keys", "label", "soft",
@@ -76,23 +109,23 @@ def validate_pair(baseline: dict, shared: dict) -> None:
     for field in fields:
         if baseline.get(field) != shared.get(field):
             raise ValueError(f"paired predictions differ in {field}")
-    for name, prediction in (("baseline", baseline), ("shared", shared)):
-        logits = prediction.get("logits")
-        if not isinstance(logits, list) or len(logits) != len(prediction["options"]):
-            raise ValueError(f"{name} logits do not match the option count")
-        if not all(math.isfinite(float(value)) for value in logits):
-            raise ValueError(f"{name} logits are not finite")
+    validate_prediction(baseline, "baseline prediction")
+    validate_prediction(shared, "shared prediction")
 
 
 def target_distribution(prediction: dict) -> torch.Tensor:
+    option_count = len(prediction["options"])
+    label = prediction.get("label")
+    if type(label) is not int or label < 0 or label >= option_count:
+        raise ValueError("paired prediction has an invalid hard label")
     if prediction["soft"] is None:
-        target = torch.zeros(len(prediction["options"]), dtype=torch.float64)
-        target[prediction["label"]] = 1.0
+        target = torch.zeros(option_count, dtype=torch.float64)
+        target[label] = 1.0
         return target
     target = torch.tensor(prediction["soft"], dtype=torch.float64)
     if (
         target.ndim != 1
-        or target.numel() != len(prediction["options"])
+        or target.numel() != option_count
         or not torch.isfinite(target).all()
         or torch.any(target < 0)
         or not torch.isclose(target.sum(), target.new_tensor(1.0), atol=1e-6)
@@ -122,49 +155,137 @@ def prediction_metrics(prediction: dict, temperature: float) -> dict[str, float]
     return values
 
 
+def inventory_from_requests(requests: list[dict]) -> dict[tuple, dict]:
+    inventory = {}
+    for request in requests:
+        meta = request.get("meta")
+        if not isinstance(meta, dict):
+            raise ValueError("frozen request metadata is missing")
+        origin_source = meta.get("source")
+        request_id = meta.get("id")
+        group_id = meta.get("group_id")
+        parent_id = group_id or request_id
+        if not all(
+            isinstance(value, str) and value
+            for value in (origin_source, request_id, parent_id)
+        ):
+            raise ValueError("frozen request parent metadata is incomplete")
+        state_sha256 = request_state_sha256(request)
+        for question in request["questions"]:
+            expected = {
+                "request_id": request_id,
+                "group_id": group_id,
+                "state_sha256": state_sha256,
+                "question_id": question["id"],
+                "source": question["source"],
+                "type": question["type"],
+                "options": question["options"],
+                "option_keys": question["option_keys"],
+                "label": question["label"],
+                "soft": question["soft"],
+            }
+            key = prediction_key(expected)
+            if key in inventory:
+                raise ValueError(f"frozen population has a duplicate question: {key}")
+            inventory[key] = {
+                "expected": expected,
+                "parent_namespace": origin_source,
+                "parent": f"{origin_source}\0{parent_id}",
+            }
+    return inventory
+
+
+def validate_population(
+    predictions: list[dict], inventory: dict[tuple, dict], label: str,
+) -> dict[tuple, dict]:
+    indexed = index_predictions(predictions)
+    if set(indexed) != set(inventory):
+        missing = len(set(inventory) - set(indexed))
+        extra = len(set(indexed) - set(inventory))
+        raise ValueError(
+            f"{label} differs from the frozen population: "
+            f"missing={missing}, extra={extra}"
+        )
+    fields = (
+        "request_id", "group_id", "state_sha256", "question_id", "source",
+        "type", "options", "option_keys", "label", "soft",
+    )
+    for key, prediction in indexed.items():
+        expected = inventory[key]["expected"]
+        for field in fields:
+            if prediction.get(field) != expected.get(field):
+                raise ValueError(f"{label} differs from frozen {field}: {key}")
+        validate_prediction(prediction, label)
+    return indexed
+
+
+def validate_split_population(
+    suite: str | Path, split: str, descriptor: dict,
+) -> tuple[list[dict], dict[tuple, dict]]:
+    requests, _ = load_frozen_split(suite, split)
+    inventory = inventory_from_requests(requests)
+    if len(requests) != descriptor["records"]:
+        raise ValueError(f"{split} request count differs from the frozen plan")
+    if len(inventory) != descriptor["questions"]:
+        raise ValueError(f"{split} question count differs from the frozen plan")
+    return requests, inventory
+
+
 def quantile_interval(values: list[float]) -> dict:
     ordered = sorted(values)
     samples = len(ordered)
+    lower = max(0, math.ceil(0.025 * samples) - 1)
+    upper = min(samples - 1, math.ceil(0.975 * samples) - 1)
     return {
-        "lower": ordered[max(0, math.floor(0.025 * samples) - 1)],
-        "upper": ordered[min(samples - 1, math.ceil(0.975 * samples) - 1)],
+        "lower": ordered[lower],
+        "upper": ordered[upper],
         "samples": samples,
-        "unit": "source-namespaced request parent",
+        "unit": "origin-source-namespaced request parent",
+        "quantile_method": QUANTILE_METHOD,
     }
 
 
 def bootstrap_differences(
     rows: list[dict], metric: str, samples: int, seed: int,
 ) -> tuple[dict, dict]:
-    by_source_parent = defaultdict(lambda: defaultdict(list))
+    by_namespace_parent = defaultdict(lambda: defaultdict(list))
+    task_sources = set()
     for row in rows:
-        if metric in row["difference"]:
-            by_source_parent[row["source"]][row["parent"]].append(
-                row["difference"][metric]
-            )
-    if not by_source_parent or any(
-        len(parents) < 2 for parents in by_source_parent.values()
+        if metric not in row["difference"]:
+            continue
+        by_namespace_parent[row["parent_namespace"]][row["parent"]].append(row)
+        task_sources.add(row["source"])
+    if not by_namespace_parent or any(
+        len(parents) < 2 for parents in by_namespace_parent.values()
     ):
-        raise ValueError(f"{metric} needs at least two parents in every source")
+        raise ValueError(
+            f"{metric} needs at least two parents in every origin-source stratum"
+        )
     generator = random.Random(seed)
     weighted_estimates, source_macro_estimates = [], []
-    for _ in range(samples):
-        sampled_by_source = {}
-        for source, parents in sorted(by_source_parent.items()):
+    attempts = 0
+    while len(weighted_estimates) < samples:
+        attempts += 1
+        if attempts > samples * 100:
+            raise RuntimeError("parent bootstrap could not retain every task source")
+        selected = []
+        for parents in (
+            by_namespace_parent[key] for key in sorted(by_namespace_parent)
+        ):
             keys = sorted(parents)
-            chosen = generator.choices(keys, k=len(keys))
-            sampled_by_source[source] = [
-                value for key in chosen for value in parents[key]
-            ]
-        all_values = [
-            value
-            for source_values in sampled_by_source.values()
-            for value in source_values
-        ]
+            for parent in generator.choices(keys, k=len(keys)):
+                selected.extend(parents[parent])
+        sampled_by_source = defaultdict(list)
+        all_values = []
+        for row in selected:
+            value = row["difference"][metric]
+            all_values.append(value)
+            sampled_by_source[row["source"]].append(value)
+        if set(sampled_by_source) != task_sources:
+            continue
         weighted_estimates.append(sum(all_values) / len(all_values))
         source_macro_estimates.append(sum(
-            sum(source_values) / len(source_values)
-            for source_values in sampled_by_source.values()
+            sum(values) / len(values) for values in sampled_by_source.values()
         ) / len(sampled_by_source))
     return (
         quantile_interval(weighted_estimates),
@@ -175,6 +296,7 @@ def bootstrap_differences(
 def paired_summary(
     baseline_predictions: list[dict],
     shared_predictions: list[dict],
+    parent_bindings: dict[tuple, dict],
     baseline_temperature: float,
     shared_temperature: float,
     samples: int,
@@ -196,16 +318,25 @@ def paired_summary(
             "paired prediction membership differs: "
             f"missing_baseline={missing_baseline}, missing_shared={missing_shared}"
         )
+    if set(parent_bindings) != set(baseline_index):
+        raise ValueError("parent bindings differ from paired prediction membership")
     rows = []
     for key in sorted(baseline_index):
         baseline = baseline_index[key]
         shared = shared_index[key]
         validate_pair(baseline, shared)
+        binding = parent_bindings[key]
+        if not all(
+            isinstance(binding.get(field), str) and binding[field]
+            for field in ("parent_namespace", "parent")
+        ):
+            raise ValueError("paired prediction has an invalid parent binding")
         baseline_values = prediction_metrics(baseline, baseline_temperature)
         shared_values = prediction_metrics(shared, shared_temperature)
         rows.append({
             "source": baseline["source"],
-            "parent": parent_key(baseline),
+            "parent_namespace": binding["parent_namespace"],
+            "parent": binding["parent"],
             "difference": {
                 metric: shared_values[metric] - value
                 for metric, value in baseline_values.items()
@@ -232,16 +363,103 @@ def paired_summary(
         )
         result[metric] = {
             "n": len(metric_rows),
+            "parents": len({row["parent"] for row in metric_rows}),
+            "parent_namespaces": len({
+                row["parent_namespace"] for row in metric_rows
+            }),
+            "task_sources": len(source_values),
             "shared_minus_baseline": weighted,
             "source_macro_shared_minus_baseline": source_macro,
             "parent_bootstrap_ci95": weighted_interval,
-            "source_stratified_parent_bootstrap_ci95": source_macro_interval,
+            "source_macro_parent_bootstrap_ci95": source_macro_interval,
         }
     return {
         "questions": len(rows),
         "parents": len({row["parent"] for row in rows}),
-        "sources": len({row["source"] for row in rows}),
+        "parent_namespaces": len({row["parent_namespace"] for row in rows}),
+        "task_sources": len({row["source"] for row in rows}),
         "metrics": result,
+    }
+
+
+def validate_report_plan(report: dict, plan: dict, label: str) -> None:
+    if report.get("comparison_plan_sha256") != plan["plan_sha256"]:
+        raise ValueError(f"{label} report uses a different comparison plan")
+    for track, split in SPLITS.items():
+        section = report.get(split, {})
+        binding = plan["suites"][track]
+        if section.get("manifest_sha256") != binding["manifest_sha256"]:
+            raise ValueError(f"{label} {track} manifest differs from the plan")
+        expected_split = binding["files"]["development.jsonl"]["sha256"]
+        if section.get("split_sha256") != expected_split:
+            raise ValueError(f"{label} {track} split differs from the plan")
+    temperature = report.get("temperature", {})
+    calibration = plan["suites"]["decision"]
+    if temperature.get("fit_manifest_sha256") != calibration["manifest_sha256"]:
+        raise ValueError(f"{label} calibration manifest differs from the plan")
+    expected = calibration["files"]["calibration.jsonl"]["sha256"]
+    if temperature.get("fit_split_sha256") != expected:
+        raise ValueError(f"{label} calibration split differs from the plan")
+
+
+def validate_baseline_run(report: dict, plan: dict) -> None:
+    fields = ("run_id", "spec_sha256", "generation", "checkpoint_sha256")
+    actual = report.get("run", {})
+    expected = plan["baseline_run"]
+    if any(actual.get(field) != expected.get(field) for field in fields):
+        raise ValueError("baseline report run differs from the frozen plan")
+    if report.get("model") != "baseline-separate-question":
+        raise ValueError("baseline report model identity is invalid")
+
+
+def validate_completed_run(report: dict, run_directory: str | Path) -> dict:
+    run_directory = Path(run_directory).resolve()
+    run = json.loads((run_directory / "run.json").read_text())
+    manifest = json.loads((run_directory / "latest.json").read_text())
+    current = manifest.get("current", {})
+    if manifest.get("status") != "completed" or current.get("status") != "completed":
+        raise ValueError("shared run is not completed")
+    expected = {
+        "run_id": run["run_id"],
+        "spec_sha256": run["spec_sha256"],
+        "generation": current["generation"],
+        "checkpoint_sha256": current["sha256"],
+    }
+    if report.get("run") != expected:
+        raise ValueError("shared report run differs from the completed run")
+    return {"path": str(run_directory), **expected}
+
+
+def validate_temperature(
+    report: dict, calibration_predictions: list[dict], plan: dict, label: str,
+) -> float:
+    cleaned, audit = training_clean_calibration_predictions(
+        calibration_predictions, plan,
+    )
+    if report["temperature"].get("common_clean") != audit:
+        raise ValueError(f"{label} calibration clean audit is invalid")
+    value = float(report["temperature"]["value"])
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{label} temperature is invalid")
+    recomputed = fit_source_balanced_temperature(cleaned)
+    if not math.isclose(value, recomputed, rel_tol=1e-8, abs_tol=1e-10):
+        raise ValueError(f"{label} temperature does not match its predictions")
+    return value
+
+
+def analyzer_identity() -> dict:
+    repository = Path(__file__).resolve().parents[1]
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repository,
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return {
+        "path": str(Path(__file__).resolve().relative_to(repository)),
+        "sha256": file_sha256(Path(__file__)),
+        "git_commit": commit,
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "quantile_method": QUANTILE_METHOD,
     }
 
 
@@ -256,39 +474,94 @@ def compare(args) -> dict:
     baseline = load_report(baseline_path)
     shared = load_report(shared_path)
     plan = load_comparison_plan(args.comparison_plan)
-    plan_sha256 = plan["plan_sha256"]
-    if baseline["comparison_plan_sha256"] != plan_sha256:
-        raise ValueError("baseline report uses a different comparison plan")
-    if shared["comparison_plan_sha256"] != plan_sha256:
-        raise ValueError("shared report uses a different comparison plan")
+    validate_report_plan(baseline, plan, "baseline")
+    validate_report_plan(shared, plan, "shared")
+    validate_baseline_run(baseline, plan)
+    shared_run = validate_completed_run(shared, args.shared_run)
+
+    suite_paths = {
+        "decision": Path(args.decision_suite).resolve(),
+        "transfer": Path(args.transfer_suite).resolve(),
+        "korean": Path(args.korean_suite).resolve(),
+    }
+    for track, suite in suite_paths.items():
+        validate_suite_binding(plan, track, suite)
+
+    calibration_descriptor = plan["suites"]["decision"]["files"][
+        "calibration.jsonl"
+    ]
+    _, calibration_inventory = validate_split_population(
+        suite_paths["decision"], "calibration", calibration_descriptor,
+    )
+    baseline_calibration = baseline["predictions"].get("calibration")
+    shared_calibration = shared["predictions"].get("calibration")
+    validate_population(
+        baseline_calibration, calibration_inventory, "baseline calibration",
+    )
+    validate_population(
+        shared_calibration, calibration_inventory, "shared calibration",
+    )
+    baseline_temperature = validate_temperature(
+        baseline, baseline_calibration, plan, "baseline",
+    )
+    shared_temperature = validate_temperature(
+        shared, shared_calibration, plan, "shared",
+    )
+
     baseline_digest = file_sha256(baseline_path)
     shared_digest = file_sha256(shared_path)
-    seed_material = f"{plan_sha256}:{baseline_digest}:{shared_digest}"
+    seed_material = f'{plan["plan_sha256"]}:{baseline_digest}:{shared_digest}'
     root_seed = int(hashlib.sha256(seed_material.encode()).hexdigest()[:16], 16)
     comparisons = {}
     for index, (track, split) in enumerate(SPLITS.items()):
-        baseline_section = baseline[split]
-        shared_section = shared[split]
-        for field in ("manifest_sha256", "split_sha256"):
-            if baseline_section[field] != shared_section[field]:
-                raise ValueError(f"{track} reports differ in {field}")
+        descriptor = plan["suites"][track]["files"]["development.jsonl"]
+        _, inventory = validate_split_population(
+            suite_paths[track], "development", descriptor,
+        )
+        baseline_predictions = baseline["predictions"].get(split)
+        shared_predictions = shared["predictions"].get(split)
+        validate_population(
+            baseline_predictions, inventory, f"baseline {track} development",
+        )
+        validate_population(
+            shared_predictions, inventory, f"shared {track} development",
+        )
         baseline_clean, baseline_audit = common_clean_predictions(
-            baseline["predictions"][split], plan, track,
+            baseline_predictions, plan, track,
         )
         shared_clean, shared_audit = common_clean_predictions(
-            shared["predictions"][split], plan, track,
+            shared_predictions, plan, track,
         )
         if baseline_audit != shared_audit:
             raise ValueError(f"{track} reports have different clean-filter audits")
+        for report, label in ((baseline, "baseline"), (shared, "shared")):
+            section_audit = report[split].get("common_clean", {})
+            reported = {
+                field: section_audit.get(field)
+                for field in (
+                    "excluded_requests", "excluded_questions", "retained_questions",
+                )
+            }
+            if reported != baseline_audit:
+                raise ValueError(f"{label} {track} clean audit is invalid")
+        clean_keys = {prediction_key(item) for item in baseline_clean}
+        parent_bindings = {
+            key: {
+                "parent_namespace": inventory[key]["parent_namespace"],
+                "parent": inventory[key]["parent"],
+            }
+            for key in clean_keys
+        }
         comparisons[track] = {
-            "manifest_sha256": baseline_section["manifest_sha256"],
-            "split_sha256": baseline_section["split_sha256"],
+            "manifest_sha256": plan["suites"][track]["manifest_sha256"],
+            "split_sha256": descriptor["sha256"],
             "common_clean": baseline_audit,
             **paired_summary(
                 baseline_clean,
                 shared_clean,
-                float(baseline["temperature"]["value"]),
-                float(shared["temperature"]["value"]),
+                parent_bindings,
+                baseline_temperature,
+                shared_temperature,
                 args.bootstrap_samples,
                 root_seed + index * 100,
             ),
@@ -296,24 +569,33 @@ def compare(args) -> dict:
     report = {
         "version": 1,
         "status": "compared",
-        "comparison_plan_sha256": plan_sha256,
+        "comparison_plan_sha256": plan["plan_sha256"],
+        "analyzer": analyzer_identity(),
         "baseline_report": {
             "path": str(baseline_path),
             "file_sha256": baseline_digest,
             "report_sha256": baseline["report_sha256"],
-            "temperature": baseline["temperature"]["value"],
+            "temperature": baseline_temperature,
         },
         "shared_report": {
             "path": str(shared_path),
             "file_sha256": shared_digest,
             "report_sha256": shared["report_sha256"],
-            "temperature": shared["temperature"]["value"],
+            "temperature": shared_temperature,
+            "run": shared_run,
         },
+        "suites": {key: str(path) for key, path in suite_paths.items()},
         "difference_definition": (
-            "shared minus baseline; positive favors shared for accuracy and "
-            "negative favors shared for loss and Brier metrics"
+            "shared minus baseline after each model's independently fitted "
+            "temperature; positive favors shared for accuracy and negative "
+            "favors shared for loss and Brier metrics"
+        ),
+        "uncertainty_scope": (
+            "pointwise paired parent bootstrap for fixed models and fixed fitted "
+            "temperatures; excludes training-seed and calibration-fit uncertainty"
         ),
         "bootstrap_samples": args.bootstrap_samples,
+        "root_seed": root_seed,
         "locked_test_opened": False,
         "splits": comparisons,
     }
@@ -326,7 +608,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--shared", required=True)
+    parser.add_argument("--shared-run", required=True)
     parser.add_argument("--comparison-plan", required=True)
+    parser.add_argument("--decision-suite", required=True)
+    parser.add_argument("--transfer-suite", required=True)
+    parser.add_argument("--korean-suite", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--bootstrap-samples", type=int, default=2000)
     args = parser.parse_args()
