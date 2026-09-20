@@ -14,6 +14,7 @@ from experiments.comparison_protocol import (
     canonical_sha256,
     comparison_code_identity,
     request_state_sha256,
+    validate_external_audit_bindings,
 )
 from experiments.freeze_shared_suite import reconstruct_partitions
 from experiments.kev_adapter import file_sha256, load_frozen_split
@@ -61,6 +62,19 @@ def freeze(args) -> dict:
         "korean": Path(args.korean_suite).resolve(),
     }
     rendered_state_audit = load_rendered_state_audit(suites["decision"])
+    suite_bindings = {
+        "decision": suite_binding(
+            suites["decision"],
+            ("calibration.jsonl", "development.jsonl"),
+        ),
+        "transfer": suite_binding(
+            suites["transfer"], ("development.jsonl",),
+        ),
+        "korean": suite_binding(
+            suites["korean"], ("development.jsonl",),
+        ),
+    }
+    validate_external_audit_bindings(suite_bindings, rendered_state_audit)
     calibration, _ = load_frozen_split(suites["decision"], "calibration")
     development = {
         key: load_frozen_split(path, "development")[0]
@@ -95,18 +109,7 @@ def freeze(args) -> dict:
             "train_fingerprint": run["spec"]["train_fingerprint"],
             "validation_fingerprint": run["spec"]["validation_fingerprint"],
         },
-        "suites": {
-            "decision": suite_binding(
-                suites["decision"],
-                ("calibration.jsonl", "development.jsonl"),
-            ),
-            "transfer": suite_binding(
-                suites["transfer"], ("development.jsonl",),
-            ),
-            "korean": suite_binding(
-                suites["korean"], ("development.jsonl",),
-            ),
-        },
+        "suites": suite_bindings,
         "rendered_state_audit": {
             "artifact_sha256": rendered_state_audit["artifact_sha256"],
             "file_sha256": file_sha256(

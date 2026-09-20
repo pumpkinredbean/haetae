@@ -91,11 +91,24 @@ def validate_suite_binding(plan: dict, key: str, suite: str | Path) -> dict:
             raise ValueError(
                 "rendered-state audit differs from the comparison plan"
             )
+        audit = json.loads(audit_path.read_text())
+        validate_external_audit_bindings(plan["suites"], audit)
     manifest = json.loads(manifest_path.read_text())
     for filename, descriptor in binding["files"].items():
         if manifest.get("files", {}).get(filename) != descriptor:
             raise ValueError(f"{key} suite split differs from the comparison plan")
     return manifest
+
+
+def validate_external_audit_bindings(
+    suite_bindings: dict,
+    rendered_state_audit: dict,
+) -> None:
+    for key in ("transfer", "korean"):
+        if rendered_state_audit.get(key) != suite_bindings.get(key):
+            raise ValueError(
+                f"{key} suite differs from the rendered-state audit"
+            )
 
 
 def _clean_predictions(

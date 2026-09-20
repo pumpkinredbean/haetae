@@ -8,6 +8,7 @@ from experiments.comparison_protocol import (
     common_clean_predictions,
     load_comparison_plan,
     training_clean_calibration_predictions,
+    validate_external_audit_bindings,
 )
 
 
@@ -87,6 +88,17 @@ class ComparisonProtocolTest(unittest.TestCase):
             path.write_text(json.dumps(plan))
             with self.assertRaisesRegex(ValueError, "digest mismatch"):
                 load_comparison_plan(path, enforce_code=False)
+
+    def test_external_suites_must_be_the_ones_audited(self):
+        suites = {
+            "transfer": {"manifest_sha256": "transfer-a"},
+            "korean": {"manifest_sha256": "korean-a"},
+        }
+        validate_external_audit_bindings(suites, dict(suites))
+        changed = dict(suites)
+        changed["transfer"] = {"manifest_sha256": "transfer-b"}
+        with self.assertRaisesRegex(ValueError, "transfer suite differs"):
+            validate_external_audit_bindings(changed, suites)
 
 
 if __name__ == "__main__":
