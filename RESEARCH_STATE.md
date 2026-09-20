@@ -283,6 +283,11 @@ tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 
 - tmux session: `haetae-shared-v1`
 - log: `/Users/minkyu/workspace/haetae/train_shared_v1.log`
+- run ID: `71d06d48-a3cf-4ddc-bfe2-2315dbe66da8`
+- run-spec SHA-256: `2797fc5a985c315f035658790c6ba582d634fe2ceeaa2d8fc5d35e78a100e9d5`
+- training-code SHA-256: `ff54ea26399fd9ad335eabba9d6f6a85a49880d8ac23b5217de665b10c2cc3fe`
+- generation 1 is the validated running checkpoint at step 0;
+- generation 2 is the first durable trained checkpoint at step 50, SHA-256 `2a53635a19f109fdd2ed128aaac373a6186255266f7920eef52f013b71fef40b`; the run continued past step 75 at approximately `1.51 s/update` including checkpoint time.
 
 ## Next actions
 
