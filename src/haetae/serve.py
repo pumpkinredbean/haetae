@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -13,6 +15,8 @@ app = FastAPI()
 _model = _tok = None
 _device = "mps" if torch.backends.mps.is_available() else "cpu"
 _temperature = 1.0
+_max_len = 8192
+_calibrated = False
 
 
 class Question(BaseModel):
@@ -28,13 +32,26 @@ class Req(BaseModel):
 
 
 def load(checkpoint="runs/v1"):
-    global _model, _tok
+    global _model, _tok, _temperature, _max_len, _calibrated
     _tok = AutoTokenizer.from_pretrained(checkpoint)
     ck = torch.load(f"{checkpoint}/model.pt", map_location="cpu", weights_only=False)
     _model = HaetaeModel(ck["config"]["backbone"])
     _model.backbone.load_state_dict(ck["backbone"])
     _model.head.load_state_dict(ck["head"])
     _model.to(_device).eval()
+    _max_len = int(ck["config"].get("max_len", 8192))
+    calibration_path = os.path.join(checkpoint, "calibration.json")
+    if os.path.exists(calibration_path):
+        with open(calibration_path, encoding="utf-8") as f:
+            calibration = json.load(f)
+        temperature = float(calibration["temperature"])
+        if not temperature > 0:
+            raise ValueError("calibration temperature must be positive")
+        _temperature = temperature
+        _calibrated = True
+    else:
+        _temperature = 1.0
+        _calibrated = False
 
 
 def _options(q: Question):
@@ -59,7 +76,7 @@ def systemone(req: Req):
     items = [(name, q, *_options(q)) for name, q in req.questions.items()]
     recs = [{"state": state, "instructions": q.instructions, "options": opts}
             for name, q, opts, names in items]
-    b = collate(_tok, recs)
+    b = collate(_tok, recs, _max_len)
     if any(b["dropped_options"]):
         bad = [name for (name, *_), d in zip(items, b["dropped_options"]) if d]
         raise HTTPException(422, {"error": "question does not fit context",
@@ -82,4 +99,5 @@ def systemone(req: Req):
                              "probabilities": probs, "confidence": round(conf, 4)}
     answers = {**nouls, **choices, **scores}
     return {"model": req.model, "nouls": nouls, "choices": choices,
-            "scores": scores, "answers": answers}
+            "scores": scores, "answers": answers,
+            "calibrated": _calibrated}

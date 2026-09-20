@@ -8,6 +8,7 @@ than empirical calibration, and one Jev does not make.
 
 from __future__ import annotations
 
+import numbers
 import torch
 import torch.nn.functional as F
 
@@ -18,6 +19,16 @@ def fit_temperature(logits_list, labels):
     Optimized in log space so T stays positive. Logits are [K]
     tensors; labels are scalar class indices.
     """
+    if not logits_list or len(logits_list) != len(labels):
+        raise ValueError("logits and labels must have equal nonzero length")
+    for logits, label in zip(logits_list, labels):
+        if logits.ndim != 1 or logits.numel() < 2:
+            raise ValueError("each logit tensor must be 1D with >=2 classes")
+        if not torch.isfinite(logits).all():
+            raise ValueError("logits must be finite")
+        if not isinstance(label, numbers.Integral) or not 0 <= label < logits.numel():
+            raise ValueError("label is outside its logit tensor")
+
     log_T = torch.tensor(0.0, requires_grad=True)
     opt = torch.optim.LBFGS([log_T], lr=0.05, max_iter=100)
     logits_list = [l.detach().float().cpu() for l in logits_list]
@@ -46,7 +57,19 @@ def conformal_threshold(probs_list, labels, alpha=0.1):
     import math
 
     n = len(probs_list)
-    assert n > 0 and 0 < alpha < 1
+    if n == 0 or n != len(labels):
+        raise ValueError("probabilities and labels must have equal nonzero length")
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1")
+    for probs, label in zip(probs_list, labels):
+        if probs.ndim != 1 or probs.numel() < 2:
+            raise ValueError("each probability tensor must be 1D with >=2 classes")
+        if not torch.isfinite(probs).all() or (probs < 0).any():
+            raise ValueError("probabilities must be finite and nonnegative")
+        if abs(float(probs.sum()) - 1.0) > 1e-3:
+            raise ValueError("probabilities must sum to 1")
+        if not isinstance(label, numbers.Integral) or not 0 <= label < probs.numel():
+            raise ValueError("label is outside its probability tensor")
     scores = sorted(1.0 - float(p[y]) for p, y in zip(probs_list, labels))
     rank = math.ceil((n + 1) * (1 - alpha))
     return math.inf if rank > n else scores[rank - 1]
@@ -65,9 +88,14 @@ def binomial_upper_bound(errors, n, confidence=0.95):
     """
     from scipy.stats import beta
 
+    if not isinstance(errors, int) or not isinstance(n, int):
+        raise TypeError("errors and n must be integers")
+    if n < 0 or not 0 <= errors <= n:
+        raise ValueError("require 0 <= errors <= n")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must be between 0 and 1")
     if n == 0:
         return 1.0
-    assert 0 <= errors <= n
     if errors == 0:
         return 1.0 - (1.0 - confidence) ** (1.0 / n)
     if errors == n:
@@ -82,6 +110,12 @@ def certify_selective_risk(probs_list, labels, threshold, confidence=0.95):
     bound on P(wrong | accepted). The rule must be frozen before the
     certification data is touched.
     """
+    if not probs_list or len(probs_list) != len(labels):
+        raise ValueError("probabilities and labels must have equal nonzero length")
+    if not 0 <= threshold <= 1:
+        raise ValueError("threshold must be between 0 and 1")
+    # Reuse the strict distribution and label validation.
+    conformal_threshold(probs_list, labels, alpha=0.5)
     accepted = [(p, y) for p, y in zip(probs_list, labels)
                 if float(p.max()) >= threshold]
     errors = sum(1 for p, y in accepted if int(p.argmax()) != y)

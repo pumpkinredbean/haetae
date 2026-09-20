@@ -60,6 +60,8 @@ Verified on the real training path:
 
 Checkpoint format v2 additionally stores and validates the epoch, full shuffled row order, next-batch cursor, training-row fingerprint, checkpoint version, required fields, step range, and scheduler `last_epoch == step`. Unit tests verify model/optimizer/scheduler/RNG/data-state restoration and reject a mismatched dataset fingerprint. The clean run uses `runs/v2`.
 
+Real v2 recovery was verified: SIGTERM saved step 82 at epoch 0, cursor 656, scheduler step 82, and the next eight row indices. `--resume auto` loaded step 82 and the next step-100 checkpoint recorded cursor 800, exactly `656 + (100 - 82) * 8`, with the same training fingerprint. This confirms that the saved shuffled order and batch cursor were used after restart.
+
 ## State truncation audit
 
 At `max_len=768`, 1,700 source rows per ordinary source and 1,700 HelpSteer2 source rows expanded to 8,500 questions were audited with the actual tokenizer and packing budget.
@@ -87,7 +89,7 @@ tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train
 
 1. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
 2. Ask 6 Pro to assess the measured HelpSteer2 truncation and choose a defensible baseline/ablation policy.
-3. Start the exact-resume v2 768-token baseline in `runs/v2`; verify an interrupted run produces identical subsequent data order and a later checkpoint.
+3. Keep the exact-resume v2 768-token baseline running in `runs/v2`; its real step-82 to step-100 cursor continuity is verified.
 4. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
 5. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
 6. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
