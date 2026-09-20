@@ -335,6 +335,12 @@ Decision and Korean NLL and both Brier differences favor shared with intervals e
 
 ## Next actions
 
-1. Preserve the validated role C result and use it as the baseline measurement.
-2. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
-3. Implement and run the smallest development-only ablation that distinguishes architecture gains from recipe and transfer-mixture effects.
+ChatGPT 6 Pro inspected exact commit `4a15e3be724ef7210bde42c92da5f084031c1332` and selected trained-checkpoint packed-versus-separate execution as the highest-information next experiment. It distinguished the strong decision and Korean development gains from the unresolved transfer regression, and noted that worse transfer NLL and Brier do not by themselves isolate calibration from discrimination. It did not open a locked test.
+
+The selected experiment keeps generation 79 and temperature `1.5197255188671874` fixed. It compares packed execution with batched and serial single-question execution on every common-clean public development request. Same-device gates require maximum total variation at most `1e-4`, 99th-percentile total variation at most `1e-5`, maximum log-probability difference at most `1e-3`, and no changed action when the reference top-two margin exceeds `2e-4`. The MPS efficiency gate requires a packed-to-batched complete-request mean latency ratio at most `0.90`, a paired-parent interval upper bound below `1.0`, and a p95 ratio at most `1.05` in both decision and Korean multi-question workloads.
+
+`experiments/shared_execution_protocol.json` freezes those gates. `experiments/benchmark_shared_execution.py` freezes result-independent workload and timing schedules, runs CPU and MPS equivalence, records three fresh-process latency repetitions, runs separate steady-state memory passes, and binds every artifact to the protocol, checkpoint, tokenizer, suites, source, and runtime. A real preflight froze 3,963 requests and 7,227 questions and a generation-79 MPS smoke request produced packed-versus-batched total variation up to `9.92e-9` and packed-versus-serial total variation up to `7.42e-9`. This is mechanics evidence, not the benchmark result. All 95 repository tests pass offline.
+
+1. Commit and push the frozen protocol and benchmark runner.
+2. Ask ChatGPT 6 Pro to review the exact benchmark commit before measuring results.
+3. Address any material review finding, freeze `evaluations/shared-execution-v1`, then run equivalence, timing, memory, and summary without opening a locked test.

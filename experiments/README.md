@@ -86,3 +86,28 @@ An interrupted run resumes only when all bound identities still match.
 
 The active baseline run is independent of this directory. Prototype changes do
 not alter its training-code identity.
+
+## Trained-weight execution benchmark
+
+`benchmark_shared_execution.py` compares packed requests, batched
+single-question encodings, and serial single-question encodings without
+changing model weights. The checked-in protocol fixes numerical gates,
+result-independent workloads, latency repetitions, memory checks, and the
+next decision before inference.
+
+Freeze the public development population after committing the runner:
+
+```bash
+HF_HUB_OFFLINE=1 uv run python -m experiments.benchmark_shared_execution freeze \
+  --run runs/shared-v1 \
+  --comparison-plan evaluations/comparison-v1/plan.json \
+  --decision-suite evaluations/shared-v1 \
+  --transfer-suite evaluations/kev-transfer-v4 \
+  --korean-suite evaluations/korean-v1 \
+  --out evaluations/shared-execution-v1
+```
+
+Run `equivalence` once per device, `timing` for repetitions 0 through 2 on
+each device, and `memory` for arms P, B, and S on each device. `summarize`
+validates every artifact binding and applies the frozen gates. These commands
+load development files only; they have no option that permits a locked test.

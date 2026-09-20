@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "name": "trained-weight shared execution substitution",
+  "purpose": "Test whether the completed shared-state checkpoint preserves predictions and provides a practical execution benefit when one state is encoded once for all questions.",
+  "locked_data_policy": "Use only manifest-bound public development splits. Never load a test split.",
+  "checkpoint": {
+    "run_id": "71d06d48-a3cf-4ddc-bfe2-2315dbe66da8",
+    "spec_sha256": "2797fc5a985c315f035658790c6ba582d634fe2ceeaa2d8fc5d35e78a100e9d5",
+    "generation": 79,
+    "step": 3894,
+    "checkpoint_sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
+    "temperature": 1.5197255188671874,
+    "precision": "float32",
+    "attention_implementation": "eager",
+    "max_length": 2048
+  },
+  "arms": {
+    "P": "One state prefix followed by every original sibling-isolated question branch.",
+    "B": "One single-question encoding per original question, with all encodings in one model batch.",
+    "S": "The same single-question encodings executed one at a time."
+  },
+  "equivalence": {
+    "population": "Every common-clean public development request from the decision, transfer, and Korean suites.",
+    "temperatures": [1.0, 1.5197255188671874],
+    "max_total_variation": 0.0001,
+    "p99_total_variation": 0.00001,
+    "max_absolute_log_probability_difference": 0.001,
+    "minimum_reference_top_two_margin": 0.0002,
+    "allowed_action_changes_above_margin": 0,
+    "stress_checks": [
+      "question_order_reversal",
+      "sibling_removal",
+      "unrelated_sibling_replacement",
+      "shorter_and_longer_batch_neighbors"
+    ],
+    "failure_policy": "Any same-device gate failure pauses every efficiency conclusion until localized and corrected."
+  },
+  "workload_selection": {
+    "seed": 20260920,
+    "hash_selected_per_multi_question_cell": 64,
+    "hash_selected_single_question_controls_per_suite": 32,
+    "longest_diagnostics_per_cell": 16,
+    "cell": ["suite", "original_question_count"],
+    "primary_multi_question_suites": ["decision", "korean"],
+    "single_question_control_suites": ["decision", "transfer"],
+    "manufactured_sharing": false
+  },
+  "timing": {
+    "devices": ["cpu", "mps"],
+    "request_batch_sizes": [1, 2],
+    "fresh_process_repetitions": 3,
+    "primary_warmup_requests": 30,
+    "primary_measured_requests": 200,
+    "single_control_warmup_requests": 16,
+    "single_control_measured_requests": 64,
+    "clock": "time.perf_counter_ns",
+    "mps_synchronization": "Immediately before and after every timed operation.",
+    "counterbalancing": "Latin rotation of arm order plus alternating scope and batch order across repetitions and conditions.",
+    "scopes": {
+      "pretokenized_forward": "Frozen encoding objects are ready; dynamic collation, attention masks, transfers, encoder, and pointer head are included.",
+      "complete_request": "In-memory request validation, tokenization with one state tokenization per request, packing, transfers, model, fixed-temperature probabilities, CPU materialization, and response construction are included. Checkpoint loading and transport are excluded."
+    },
+    "primary_gate": {
+      "comparison": "P divided by B on complete_request, request batch size 1, MPS, evaluated separately for decision and Korean multi-question requests.",
+      "maximum_mean_latency_ratio": 0.9,
+      "maximum_paired_parent_95_percent_upper_bound": 1.0,
+      "maximum_p95_latency_ratio": 1.05,
+      "replicated_regression_ratio": 1.05,
+      "bootstrap_draws": 10000,
+      "bootstrap_seed": 4073971648024356758
+    }
+  },
+  "memory": {
+    "devices": ["cpu", "mps"],
+    "request_batch_size": 2,
+    "steady_state_requests": 1000,
+    "scope": "complete_request",
+    "maximum_residual_live_tensor_increase_bytes": 67108864,
+    "cache_release_inside_latency_trials": false,
+    "observed_maximum_label": "Sampled allocation maximum; not a guaranteed allocator peak."
+  },
+  "decision": {
+    "equivalent_and_faster": "Run a narrow emotion and offensive-domain replay ablation while preserving all other recipe settings and excluding development parents.",
+    "equivalence_failure": "Correct the execution mismatch and repeat this experiment.",
+    "equivalent_but_not_faster": "Optimize dense-mask execution or add a workload-specific routing policy before another quality-training experiment."
+  }
+}
