@@ -433,4 +433,12 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-shared-confirmation-v1 "zsh -lc 'set -o pipefail; /Users/minkyu/workspace/haetae/experiments/run_shared_execution_confirmation.zsh 2>&1 | tee -a /Users/minkyu/workspace/haetae/shared_execution_confirmation_v1.log'"
 ```
 
+The approved run started at 2026-09-21 04:06:42 KST.
+
+- tmux session: `haetae-shared-confirmation-v1`
+- log: `/Users/minkyu/workspace/haetae/shared_execution_confirmation_v1.log`
+- output: `/Users/minkyu/workspace/haetae/evaluations/shared-execution-confirmation-v1`
+- resume command: the exact tmux command above; completed process metadata are revalidated and skipped.
+- current status: six-process measurement active.
+
 2. Validate and externally review the complete measured artifacts. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
