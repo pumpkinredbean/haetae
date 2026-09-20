@@ -439,6 +439,20 @@ The approved run started at 2026-09-21 04:06:42 KST.
 - log: `/Users/minkyu/workspace/haetae/shared_execution_confirmation_v1.log`
 - output: `/Users/minkyu/workspace/haetae/evaluations/shared-execution-confirmation-v1`
 - resume command: the exact tmux command above; completed process metadata are revalidated and skipped.
-- current status: six-process measurement active.
+- current status: six-process measurement and exact local replay complete.
 
-2. Validate and externally review the complete measured artifacts. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
+All six fresh MPS processes completed with distinct identities and 528 bound observations each. The exact verifier reproduced the complete summary.
+
+- summary self SHA-256: `494d1b55cb8cc6e3e8b954b171e525fc569af5509e94351366b4e186717ed207`;
+- summary file SHA-256: `c71787fd3c8063f2425a6a9e2f55d5090705865904454257d1e0b18d9389563b`;
+- combined observations SHA-256: `39eb188baf99d54ef6eace74a9181e1a9c5cbffd21faa47813e750885e38df5e`;
+- decision P/B: `0.7634`, parent-bootstrap interval `[0.7477, 0.7804]`, crossed process-and-parent interval `[0.7450, 0.7827]`, p95 ratio `0.6865`, and all six process ratios below one;
+- Korean P/B: `0.8364`, parent-bootstrap interval `[0.8171, 0.8569]`, crossed interval `[0.8147, 0.8602]`, p95 ratio `0.7911`, and all six process ratios below one;
+- decision order strata are `0.7609` B-first and `0.7659` P-first; Korean order strata are `0.8404` and `0.8324`;
+- the single-question control P/B is `0.9881`, parent-bootstrap interval `[0.9723, 1.0045]`, crossed interval `[0.9268, 1.0525]`, and p95 ratio `0.9952`.
+
+The frozen gates all pass and the recorded outcome is `batch_one_speedup_confirmed`. One diagnostic requires explicit final interpretation: every single-question control has identical packed and batched model input, so the second member of each adjacent pair immediately repeats the first input. Its pooled counterbalanced ratio is neutral, but its order-stratum P/B ratios are `0.5568` when B is first and `1.7538` when P is first; the first operation averages `1.7748` times the second. This does not appear in either primary population, whose packed and batched shapes differ and whose order-stratum ratios agree closely. Final review must decide whether the exact counterbalance and primary-stratum stability adequately explain this control-order effect.
+
+No locked test was opened. The original execution report remains unchanged.
+
+2. Obtain ChatGPT 6 Pro review of the complete measured artifacts and the control-order interpretation. Treat any accepted result as warmed steady-state performance. Do not retrain or open either locked test.
