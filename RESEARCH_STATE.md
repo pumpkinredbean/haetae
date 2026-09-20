@@ -405,22 +405,22 @@ The controls narrow the interpretation. MPS single-question P/B stays near one w
 
 Next actions:
 
-The additive MPS-only batch-one confirmation implementation is commit `dc679ba68ad2f4afbbe638c2a4edbdaddea51124`. All 113 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
+The additive MPS-only batch-one confirmation implementation is commit `98e269f2e242cf940ebf7c2484600cf66a2eb2bf`. All 113 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
 
-- protocol SHA-256: `9246862997554595260f5a316eac5a9c79d0e8cf101a9b2571090471f26b0bce`;
+- protocol SHA-256: `500801125e7a0056cde7d6cafdc838b7463eed9dafa45ffaba54b6e78cede1ea`;
 - schedule SHA-256: `1903d67bbfa065bb1155e9df60a15edf41902880e51fed511ccd7fbf92fac911`;
 - source checkpoint generation 79 and SHA-256 `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`;
 - source protocol, workload, schedule, and qualified-summary bytes are bound unchanged;
 - each of six processes contains the same 100 decision, 100 Korean, and 64 single-question-control requests;
 - every request is P-first in three processes and B-first in three, while each process has exactly 50/50/32 P-first requests in the three populations;
 - each fresh process gives both arms two full untimed complete-request passes, then measures one adjacent P/B pair per request before any other benchmark scope;
-- the report preserves the original equal-workload and parent-bootstrap gates, reports crossed process-and-parent uncertainty, requires P/B below one in at least five processes and in both arm-order strata, and treats a material single-question-control displacement as a failure;
+- the report preserves the original equal-workload and parent-bootstrap gates, reports crossed process-and-parent uncertainty, requires P/B below one in at least five processes and in both arm-order strata, and fails when the single-question-control point ratio leaves `[0.9, 1.1]` or its crossed interval excludes one;
 - no checkpoint inference has run under this confirmation protocol, and no locked test has been opened.
 - completed process markers are semantically revalidated before they are skipped; an unbound result without metadata is preserved as incomplete and rerun in a fresh process; combined observations can resume only when their bytes reproduce exactly; the final summary has a full replay command.
 
 Pending actions:
 
-1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `dc679ba` and the frozen protocol and schedule.
+1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `98e269f` and the frozen protocol and schedule.
 2. If approved, launch the resumable six-process script in tmux:
 
 ```bash
