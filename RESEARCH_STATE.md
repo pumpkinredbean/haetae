@@ -405,9 +405,9 @@ The controls narrow the interpretation. MPS single-question P/B stays near one w
 
 Next actions:
 
-The additive MPS-only batch-one confirmation implementation is commit `5a5e60ce6ab8174bd42106ac072e6b280d26fc9e`. All 112 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
+The additive MPS-only batch-one confirmation implementation is commit `dc679ba68ad2f4afbbe638c2a4edbdaddea51124`. All 113 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
 
-- protocol SHA-256: `31e0f605f80f426cf72b68c9d9ca98aae9e881546bd53df8693435a331cb3972`;
+- protocol SHA-256: `9246862997554595260f5a316eac5a9c79d0e8cf101a9b2571090471f26b0bce`;
 - schedule SHA-256: `1903d67bbfa065bb1155e9df60a15edf41902880e51fed511ccd7fbf92fac911`;
 - source checkpoint generation 79 and SHA-256 `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`;
 - source protocol, workload, schedule, and qualified-summary bytes are bound unchanged;
@@ -416,10 +416,11 @@ The additive MPS-only batch-one confirmation implementation is commit `5a5e60ce6
 - each fresh process gives both arms two full untimed complete-request passes, then measures one adjacent P/B pair per request before any other benchmark scope;
 - the report preserves the original equal-workload and parent-bootstrap gates, reports crossed process-and-parent uncertainty, requires P/B below one in at least five processes and in both arm-order strata, and treats a material single-question-control displacement as a failure;
 - no checkpoint inference has run under this confirmation protocol, and no locked test has been opened.
+- completed process markers are semantically revalidated before they are skipped; an unbound result without metadata is preserved as incomplete and rerun in a fresh process; combined observations can resume only when their bytes reproduce exactly; the final summary has a full replay command.
 
 Pending actions:
 
-1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `5a5e60c` and the frozen protocol and schedule.
+1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `dc679ba` and the frozen protocol and schedule.
 2. If approved, launch the resumable six-process script in tmux:
 
 ```bash
