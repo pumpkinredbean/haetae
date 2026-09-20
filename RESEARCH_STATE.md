@@ -257,10 +257,12 @@ The combined training suite is frozen at `evaluations/shared-v1`:
 
 An exact-state audit against the baseline's immutable train and internal-validation membership found five overlapping requests in the public Kev decision-v7 development split, all from BoolQ. The transfer-v4 and Korean development splits have zero overlap. Model comparison will therefore report both the complete public development result and a common clean subset that excludes those same five requests from both models; the shared training suite and evaluation membership remain frozen.
 
+Commit `720b62c` freezes that comparison before any development-model result is inspected. Comparison plan `d93790ca7028408a176c8fe6a9cd9e91edaceb1ba1b526d377d5cef98f08dc3a` binds the completed baseline, all three public development suites, evaluator code, and exact exclusions. It removes 31 baseline-training-overlap requests containing 32 questions from the shared calibration partition for both models, while retaining 401 states from the baseline's held internal-validation partition as legitimate calibration data. It removes the five BoolQ development requests from both models' common-clean metrics. Baseline packing preflight accepted all 2,148 calibration and 7,232 development questions without state truncation; all 76 repository tests pass.
+
 ## Next actions
 
 1. Complete and validate the active role C evaluation.
-2. Obtain an exact-commit start decision from ChatGPT 6 Pro for `2485f24`.
+2. Obtain an exact-commit start decision from ChatGPT 6 Pro for the shared implementation and the comparison extension at `720b62c`.
 3. Run a real shared-state MPS memory and exact-resume smoke after the baseline measurement releases the accelerator.
 4. Start the shared-state MPS run only after its review accepts the implementation and the baseline releases the accelerator.
 5. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
