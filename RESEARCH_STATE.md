@@ -375,10 +375,16 @@ The CPU equivalence stage also completed 3,963 requests and 22,537 bound records
 
 All six timing artifacts completed in distinct processes and passed schedule, row, duration, derived-value, runtime, and artifact validation. Under the frozen aggregate gate, MPS packed-versus-batched complete-request timing passes for both primary populations: decision mean ratio `0.6093`, parent-bootstrap 95% interval `[0.5872, 0.6317]`, p95 ratio `0.4904`; Korean mean ratio `0.6936`, interval `[0.6681, 0.7203]`, p95 ratio `0.4427`.
 
-The per-process MPS mean ratios vary substantially: decision is `0.8759`, `0.3756`, and `0.8151`; Korean is `1.0322`, `0.4121`, and `1.0534`. The pooled frozen gate passes, but this run-order-sensitive spread requires explicit final review before claiming a stable practical speedup. MPS memory P and B completed their 1,000-request schedules with zero residual live-tensor increase and validated artifact SHA-256 values `4b38cc583cab2c932acc442d2a9aa288cbf3fbdd29ae3a4079a5733e80914901` and `03da1c8962106fef377dd1956f356682d5cd05017c6e0b1475a8a0dd82123763`. MPS memory S is active; CPU memory and final summary have not started.
+The per-process MPS mean ratios vary substantially: decision is `0.8759`, `0.3756`, and `0.8151`; Korean is `1.0322`, `0.4121`, and `1.0534`. The pooled frozen gate passes, but this run-order-sensitive spread requires explicit final review before claiming a stable practical speedup.
+
+All six memory passes completed their frozen 1,000-request schedules and passed semantic validation. MPS P, B, and S each have zero residual live-tensor increase and no resource-regression flag. Their observed driver-allocation maxima are `1,116,422,144`, `1,108,033,536`, and `1,108,033,536` bytes respectively; these are operation-boundary sampled maxima rather than guaranteed transient peaks.
+
+The final summary passed an independent full replay of every artifact binding, file digest, exact inventory, numerical gate, runtime identity, and six-process freshness check. It records `equivalence_passed: true`, `timing_passed: true`, `memory_passed: true`, and the predeclared outcome `equivalent_and_faster`. Report SHA-256 is `e93ae819865df02d46c733456722ba69fc76f10090153c07313d075f0c991ce4`; summary file SHA-256 is `2de3e4fbde1ce93a333eb9c2de006673d333ac7a6cbb6da39210b52dad7724aa`.
+
+The complete 37-file review archive has SHA-256 `289435618aaeaa871668ee126238bd0e3bd17b8e67c3e9ccfe296d3e015af19d`. It is attached in the existing Aside conversation. ChatGPT 6 Pro is reviewing the exact code commit and raw artifacts, with explicit focus on whether Latin rotation and three-repetition averaging adequately address the large repetition spread.
 
 Next actions:
 
-1. Run the frozen equivalence, timing, memory, and summary stages without changing weights or temperature.
-2. Validate the final report and send its exact artifacts to ChatGPT 6 Pro for result review.
-3. Use the accepted result to choose between execution optimization and a scoped specialist with an explicit out-of-distribution deferral gate.
+1. Obtain ChatGPT 6 Pro's disposition on the exact measured artifacts and the repetition-order concern.
+2. If the practical-speedup claim needs confirmation, run only the smallest predeclared timing follow-up it specifies; do not retrain.
+3. Otherwise proceed to the accepted following experiment while retaining the transfer regressions as collateral checks.
