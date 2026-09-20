@@ -214,8 +214,11 @@ class ResumeTest(unittest.TestCase):
                 mock.patch("haetae.eval.evaluate"),
             )
             with (patches[0], patches[1], patches[2], patches[3], patches[4],
-                  patches[5], patches[6]):
+                  patches[5], patches[6] as evaluate_mock):
                 train(args)
+            self.assertEqual(
+                evaluate_mock.call_args.kwargs["batch"], microbatch
+            )
             payload, _, _ = load_completed_checkpoint(output)
             return payload
 

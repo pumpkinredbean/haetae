@@ -141,7 +141,9 @@ The replacement recipe keeps an effective batch of eight questions but runs two 
 - All 27 checkpoint, calibration, serving, and certification tests pass, including native MPS restore and the new accumulation test.
 - A real ModernBERT MPS probe selected the eight longest HelpSteer2 questions from the measured pool and processed them as two microbatches of four at 1,536 tokens. The two passes took 3.165 and 2.912 seconds, peaked at 18.03 GiB driver allocation, and completed the AdamW update in 6.526 seconds. After cache release the driver allocation was 9.03 GiB.
 - A real entry-point smoke run completed two MPS optimizer updates with effective batch 8 and microbatch 4. Run `7b958056-9fd0-4536-93e4-1ccea017daaf` published completed generation 3 with SHA-256 `f8ebdb47926e8b4eb36f9c9c96f3f7a4ac1822f1fefdd8a8a5ce2d5d2bafd5ae`; the completed serving loader answered a three-question Korean request and explicitly reported `calibrated: false`.
-- No training process is active until the microbatch commit is reviewed. Start the replacement only in a fresh `runs/v3-micro4` directory.
+- ChatGPT 6 Pro reviewed exact commit `92e709aa4c6bef2a4d1664dd0fd7301c9235fd59` through the Aside REPL and returned `START — use fresh runs/v3-micro4`. Its independent checks covered uneven microbatches, rejected records, one optimizer and scheduler update per effective batch, real SIGTERM and SIGINT recovery, fresh-process exact resume, abrupt termination without partial publication, and microbatch identity mismatch rejection.
+- The review found one nonblocking memory defect: the final quick validation still used the effective batch of eight. It now uses the immutable microbatch of four, and the training entry-point test verifies that argument.
+- Start the replacement only in a fresh `runs/v3-micro4` directory. Do not resume `runs/v3` as the final baseline.
 
 ```bash
 cd /Users/minkyu/workspace/haetae
@@ -150,8 +152,8 @@ tmux new-session -d -s haetae-v3m4 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WA
 
 ## Next actions
 
-1. Obtain an exact-commit review of microbatch accumulation and its run identity, then start the fresh replacement run.
-2. Correct the certification protocol without modifying the active run's `data.py`, `model.py`, or `train.py`: use valid labeled source splits, parent-disjoint roles, raw and calibrated metrics, conformal coverage, frozen selective rules, Choice-only stress tests, synchronized latency, and digest-bound JSON output.
-3. After completion, evaluate the baseline on its held-out sources and the frozen `kev` transfer development suite, then measure CPU and MPS latency.
+1. Start the reviewed fresh replacement run and monitor its authoritative manifest, process, memory, and periodic generations.
+2. Complete the frozen certification protocol with Choice stress tests, synchronized latency, and digest-bound artifacts.
+3. After completion, evaluate the baseline on its held-out sources and the frozen `kev` transfer development suite.
 4. Design the shared-state architecture as a separate run rather than changing this baseline in place.
 5. Send the exact final code commit and measured results to ChatGPT 6 Pro through the same Aside REPL conversation, implement supported findings, and rerun affected evidence.

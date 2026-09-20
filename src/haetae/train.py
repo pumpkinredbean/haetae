@@ -405,7 +405,7 @@ def train(args):
 
     # quick val pass: accuracy + ECE before temperature
     from .eval import evaluate
-    evaluate(model, tok, val, device, args.max_len, batch=args.batch)
+    evaluate(model, tok, val, device, args.max_len, batch=args.microbatch)
 
 
 if __name__ == "__main__":
