@@ -56,6 +56,17 @@ Verified on the real training path:
 - training continued through a new periodic step-100 checkpoint, proving optimizer/scheduler state was usable after restart;
 - an independent tiny-model round-trip restored weights, optimizer/scheduler state, step, skipped count, and progress metadata.
 
+## State truncation audit
+
+At `max_len=768`, 1,700 source rows per ordinary source and 1,700 HelpSteer2 source rows expanded to 8,500 questions were audited with the actual tokenizer and packing budget.
+
+- 11 sources: 0 truncated states.
+- BoolQ: 1/1,700 truncated (0.1%), with 82.0% of the state retained.
+- HelpSteer2: 765/8,500 truncated (9.0%); no empty states; mean retained ratio 98.0%; worst retained ratio 34.4%.
+- HelpSteer2 sensitivity: 3.71% truncated at 1,024 tokens, 0.29% at 1,536, and 0.06% at 2,048.
+
+The current step-100 checkpoint remains a documented 768-token baseline. Before treating it as the final model, decide and review whether to keep and report prefix truncation, use segment-aware/head-tail preservation, or train a longer-context ablation.
+
 ## Long-running command
 
 ```bash
@@ -71,7 +82,8 @@ tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train
 ## Next actions
 
 1. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
-2. Keep the resumed run progressing from step 100; if the process disappears, use `--resume auto` from `progress.json`.
-3. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
-4. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
-5. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
+2. Ask 6 Pro to assess the measured HelpSteer2 truncation and choose a defensible baseline/ablation policy.
+3. Keep the resumed 768-token run progressing from step 100; if the process disappears, use `--resume auto` from `progress.json`.
+4. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
+5. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
+6. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
