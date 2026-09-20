@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from haetae.checkpoint import atomic_json_save
 from experiments.comparison_protocol import (
+    canonical_sha256,
     common_clean_predictions,
     load_comparison_plan,
     request_state_sha256,
@@ -37,6 +38,10 @@ SPLITS = {
 }
 SUPPORTED_TYPES = {"choice", "noul", "score"}
 QUANTILE_METHOD = "inverse empirical CDF with nearest-rank endpoints"
+BOOTSTRAP_DESIGN = (
+    "resample whole request parents within fixed origin-source and "
+    "task-source-incidence strata"
+)
 
 
 def load_report(path: str | Path) -> dict:
@@ -241,37 +246,40 @@ def quantile_interval(values: list[float]) -> dict:
         "upper": ordered[upper],
         "samples": samples,
         "unit": "origin-source-namespaced request parent",
+        "design": BOOTSTRAP_DESIGN,
         "quantile_method": QUANTILE_METHOD,
     }
 
 
 def bootstrap_differences(
     rows: list[dict], metric: str, samples: int, seed: int,
-) -> tuple[dict, dict]:
-    by_namespace_parent = defaultdict(lambda: defaultdict(list))
-    task_sources = set()
+) -> tuple[dict, dict, dict]:
+    by_parent = defaultdict(list)
+    parent_namespaces = {}
     for row in rows:
         if metric not in row["difference"]:
             continue
-        by_namespace_parent[row["parent_namespace"]][row["parent"]].append(row)
-        task_sources.add(row["source"])
-    if not by_namespace_parent or any(
-        len(parents) < 2 for parents in by_namespace_parent.values()
-    ):
+        parent = row["parent"]
+        namespace = row["parent_namespace"]
+        if parent in parent_namespaces and parent_namespaces[parent] != namespace:
+            raise ValueError("one parent appears in multiple origin namespaces")
+        parent_namespaces[parent] = namespace
+        by_parent[parent].append(row)
+    strata = defaultdict(dict)
+    for parent, parent_rows in by_parent.items():
+        incidence = tuple(sorted({row["source"] for row in parent_rows}))
+        stratum = (parent_namespaces[parent], incidence)
+        strata[stratum][parent] = parent_rows
+    if not strata or any(len(parents) < 2 for parents in strata.values()):
         raise ValueError(
-            f"{metric} needs at least two parents in every origin-source stratum"
+            f"{metric} needs at least two parents in every bootstrap stratum"
         )
     generator = random.Random(seed)
     weighted_estimates, source_macro_estimates = [], []
-    attempts = 0
-    while len(weighted_estimates) < samples:
-        attempts += 1
-        if attempts > samples * 100:
-            raise RuntimeError("parent bootstrap could not retain every task source")
+    expected_sources = {row["source"] for row in rows if metric in row["difference"]}
+    for _ in range(samples):
         selected = []
-        for parents in (
-            by_namespace_parent[key] for key in sorted(by_namespace_parent)
-        ):
+        for parents in (strata[key] for key in sorted(strata)):
             keys = sorted(parents)
             for parent in generator.choices(keys, k=len(keys)):
                 selected.extend(parents[parent])
@@ -281,8 +289,8 @@ def bootstrap_differences(
             value = row["difference"][metric]
             all_values.append(value)
             sampled_by_source[row["source"]].append(value)
-        if set(sampled_by_source) != task_sources:
-            continue
+        if set(sampled_by_source) != expected_sources:
+            raise RuntimeError("fixed bootstrap strata lost a task source")
         weighted_estimates.append(sum(all_values) / len(all_values))
         source_macro_estimates.append(sum(
             sum(values) / len(values) for values in sampled_by_source.values()
@@ -290,6 +298,12 @@ def bootstrap_differences(
     return (
         quantile_interval(weighted_estimates),
         quantile_interval(source_macro_estimates),
+        {
+            "design": BOOTSTRAP_DESIGN,
+            "strata": len(strata),
+            "minimum_parents_per_stratum": min(map(len, strata.values())),
+            "maximum_parents_per_stratum": max(map(len, strata.values())),
+        },
     )
 
 
@@ -358,7 +372,7 @@ def paired_summary(
         source_macro = sum(
             sum(values) / len(values) for values in source_values.values()
         ) / len(source_values)
-        weighted_interval, source_macro_interval = bootstrap_differences(
+        weighted_interval, source_macro_interval, bootstrap = bootstrap_differences(
             metric_rows, metric, samples, seed + index,
         )
         result[metric] = {
@@ -370,6 +384,7 @@ def paired_summary(
             "task_sources": len(source_values),
             "shared_minus_baseline": weighted,
             "source_macro_shared_minus_baseline": source_macro,
+            "bootstrap": bootstrap,
             "parent_bootstrap_ci95": weighted_interval,
             "source_macro_parent_bootstrap_ci95": source_macro_interval,
         }
@@ -416,6 +431,13 @@ def validate_completed_run(report: dict, run_directory: str | Path) -> dict:
     run_directory = Path(run_directory).resolve()
     run = json.loads((run_directory / "run.json").read_text())
     manifest = json.loads((run_directory / "latest.json").read_text())
+    if run.get("spec_sha256") != canonical_sha256(run.get("spec")):
+        raise ValueError("shared run specification digest is invalid")
+    if (
+        manifest.get("run_id") != run.get("run_id")
+        or manifest.get("spec_sha256") != run.get("spec_sha256")
+    ):
+        raise ValueError("shared run manifest identity is invalid")
     current = manifest.get("current", {})
     if manifest.get("status") != "completed" or current.get("status") != "completed":
         raise ValueError("shared run is not completed")
@@ -460,6 +482,7 @@ def analyzer_identity() -> dict:
         "python": platform.python_version(),
         "torch": torch.__version__,
         "quantile_method": QUANTILE_METHOD,
+        "bootstrap_design": BOOTSTRAP_DESIGN,
     }
 
 

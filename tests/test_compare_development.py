@@ -1,11 +1,16 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from experiments.compare_development import (
+    canonical_sha256,
     inventory_from_requests,
     paired_summary,
     prediction_key,
     quantile_interval,
     validate_baseline_run,
+    validate_completed_run,
     validate_population,
     validate_report_plan,
 )
@@ -118,6 +123,30 @@ class DevelopmentComparisonTests(unittest.TestCase):
         self.assertEqual(interval["lower"], 2.0)
         self.assertEqual(interval["upper"], 97.0)
 
+    def test_sparse_task_incidence_stratum_is_rejected(self):
+        baseline, shared, bindings = [], [], {}
+        for index in range(3):
+            parent = f"parent-{index}"
+            task_a = prediction("task_a", parent, 0, [1.0, 0.0])
+            baseline.append(task_a)
+            shared.append(dict(task_a))
+            bindings[prediction_key(task_a)] = {
+                "parent_namespace": "origin",
+                "parent": f"origin\0{parent}",
+            }
+            if index == 0:
+                task_b = prediction("task_b", parent, 1, [0.0, 1.0])
+                baseline.append(task_b)
+                shared.append(dict(task_b))
+                bindings[prediction_key(task_b)] = {
+                    "parent_namespace": "origin",
+                    "parent": f"origin\0{parent}",
+                }
+        with self.assertRaisesRegex(ValueError, "bootstrap stratum"):
+            paired_summary(
+                baseline, shared, bindings, 1.0, 1.0, 100, 5,
+            )
+
     def test_frozen_request_maps_task_sources_to_one_origin_parent(self):
         request = {
             "state": "review",
@@ -207,6 +236,49 @@ class DevelopmentComparisonTests(unittest.TestCase):
         report["run"]["generation"] = 999
         with self.assertRaisesRegex(ValueError, "run differs"):
             validate_baseline_run(report, plan)
+
+    def test_completed_run_manifest_and_spec_are_cross_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            spec = {"config": {"steps": 2}}
+            run = {
+                "version": 1,
+                "run_id": "shared-run",
+                "spec": spec,
+                "spec_sha256": canonical_sha256(spec),
+            }
+            current = {
+                "generation": 4,
+                "sha256": "checkpoint",
+                "status": "completed",
+            }
+            manifest = {
+                "version": 1,
+                "run_id": "wrong-run",
+                "spec_sha256": run["spec_sha256"],
+                "status": "completed",
+                "current": current,
+            }
+            (directory / "run.json").write_text(json.dumps(run))
+            (directory / "latest.json").write_text(json.dumps(manifest))
+            report = {
+                "run": {
+                    "run_id": "shared-run",
+                    "spec_sha256": run["spec_sha256"],
+                    "generation": 4,
+                    "checkpoint_sha256": "checkpoint",
+                },
+            }
+            with self.assertRaisesRegex(ValueError, "manifest identity"):
+                validate_completed_run(report, directory)
+            manifest["run_id"] = "shared-run"
+            (directory / "latest.json").write_text(json.dumps(manifest))
+            validated = validate_completed_run(report, directory)
+            self.assertEqual(validated["checkpoint_sha256"], "checkpoint")
+            run["spec"]["config"]["steps"] = 3
+            (directory / "run.json").write_text(json.dumps(run))
+            with self.assertRaisesRegex(ValueError, "specification digest"):
+                validate_completed_run(report, directory)
 
 
 if __name__ == "__main__":
