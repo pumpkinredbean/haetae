@@ -32,6 +32,14 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - The mixture contains 13 sources, including KLUE-YNAT and NSMC for Korean.
 - Calibration claims must identify the dataset and deployment conditions. Selective action uses a one-sided binomial risk bound.
 
+## Updated comparative evidence
+
+- TypeSafe still has not published Jev's weights, parameter count, attention graph, base model, or RLCD recipe. The defensible target is its observed behavior rather than a claim of architectural reproduction.
+- Archer Hume's 2026-09-17 black-box study provides evidence for a shared state computation, isolated question branches, listwise option interaction, and a typed parallel readout. The exact internal mechanism remains an inference.
+- `jaredpalmer/kev` commit `20fa6268c8ceb226530be2fb5266ab2c36b37724` implements that reconstruction with a causal Qwen backbone, a block-causal branch mask, restarted branch positions, and a pointer head. It also publishes frozen development and test suites and direct Jev comparisons. This is the strongest inspected open structural reproduction so far.
+- The active Haetae model is therefore a lightweight per-question encoder baseline, not the closest known multi-question reconstruction. Its remaining potential advantages are a much smaller local backbone, Korean training data, soft ordinal supervision, and digest-bound calibration and certification artifacts.
+- The next architecture experiment should share one state across isolated question branches and add a listwise decision readout while preserving Choice permutation tests and Score order. Compare it on `kev`'s frozen transfer development suite and on a separately frozen Korean suite before reading any new locked test.
+
 ## Implemented review findings
 
 - The optimizer covers every trainable backbone and head parameter exactly once, with no decay on one-dimensional backbone parameters.
@@ -104,7 +112,7 @@ Resume the same run only with:
 
 ```bash
 cd /Users/minkyu/workspace/haetae
-tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 1536 --out runs/v3 --save-every 50 --resume auto 2>&1 | tee -a train_v3.log'"
+tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 1536 --out runs/v3 --save-every 50 --resume auto 2>&1 | tee -a train_v3.log'"
 ```
 
 - tmux session: `haetae-v3`
@@ -121,9 +129,13 @@ tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv 
 - actual data: 25,500 training questions from 18,750 parents and 3,400 validation questions from 2,500 parents;
 - first durable training generation: generation 2, step 50, SHA-256 `122d823b442ac0a2864be6472bce700d1f743eb003fb7ca9ee8a3b6d74493953`;
 - step 50 loss: 1.3141, with zero rejected batches and 2.17 seconds per step including initialization and checkpoint publication.
+- The first process reached 43 GiB of unified MPS memory while finishing update 97. SIGTERM completed the active backward pass and published interrupted generation 3 at step 97 with SHA-256 `044f50df0578e239f88b6966d8c20d06ebf58acf0953e0ec2c10d5987102b79c`.
+- The process resumed from that exact generation with an MPS soft collection threshold of 0.9 and hard allocation limit of 1.3 times the 28.08 GiB recommended working set. Generation 4 reached step 100 with SHA-256 `11d28983d09d8aafb7e193e5e938368721840f5168aef4f3541217bbc006e77e`.
 
 ## Next actions
 
 1. Monitor each durable generation and resume only from the authoritative manifest if the process stops.
-2. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
-3. Send the exact final code commit and measured results to ChatGPT 6 Pro through the same Aside REPL conversation, implement supported findings, and rerun affected evidence.
+2. Correct the certification protocol without modifying the active run's `data.py`, `model.py`, or `train.py`: use valid labeled source splits, parent-disjoint roles, raw and calibrated metrics, conformal coverage, frozen selective rules, Choice-only stress tests, synchronized latency, and digest-bound JSON output.
+3. After completion, evaluate the baseline on its held-out sources and the frozen `kev` transfer development suite, then measure CPU and MPS latency.
+4. Design the shared-state architecture as a separate run rather than changing this baseline in place.
+5. Send the exact final code commit and measured results to ChatGPT 6 Pro through the same Aside REPL conversation, implement supported findings, and rerun affected evidence.
