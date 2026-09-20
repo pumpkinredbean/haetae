@@ -140,6 +140,7 @@ The replacement recipe keeps an effective batch of eight questions but runs two 
 - A regression test compares batch 2 against two microbatches of 1 and matches final model parameters within `rtol=1e-6`, `atol=1e-7`, with identical scheduler state.
 - All 27 checkpoint, calibration, serving, and certification tests pass, including native MPS restore and the new accumulation test.
 - A real ModernBERT MPS probe selected the eight longest HelpSteer2 questions from the measured pool and processed them as two microbatches of four at 1,536 tokens. The two passes took 3.165 and 2.912 seconds, peaked at 18.03 GiB driver allocation, and completed the AdamW update in 6.526 seconds. After cache release the driver allocation was 9.03 GiB.
+- A real entry-point smoke run completed two MPS optimizer updates with effective batch 8 and microbatch 4. Run `7b958056-9fd0-4536-93e4-1ccea017daaf` published completed generation 3 with SHA-256 `f8ebdb47926e8b4eb36f9c9c96f3f7a4ac1822f1fefdd8a8a5ce2d5d2bafd5ae`; the completed serving loader answered a three-question Korean request and explicitly reported `calibrated: false`.
 - No training process is active until the microbatch commit is reviewed. Start the replacement only in a fresh `runs/v3-micro4` directory.
 
 ```bash
