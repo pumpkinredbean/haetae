@@ -8,6 +8,7 @@ probability, which is the supervised form of RLCD-style training.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -37,14 +38,31 @@ def atomic_json_save(payload, path):
     os.replace(tmp, path)
 
 
-def save_checkpoint(args, model, opt, sched, step, skipped):
+CHECKPOINT_VERSION = 2
+
+
+def dataset_fingerprint(records):
+    """Stable digest of the exact ordered training records."""
+    digest = hashlib.sha256()
+    fields = ("state", "type", "instructions", "options", "label",
+              "soft", "source", "parent")
+    for record in records:
+        payload = {key: record.get(key) for key in fields}
+        digest.update(json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                                 separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def save_checkpoint(args, model, opt, sched, step, skipped, data_state,
+                    train_fingerprint):
     os.makedirs(args.out, exist_ok=True)
     checkpoint_path = os.path.join(args.out, "checkpoint.pt")
     rng = {"python": random.getstate(), "torch": torch.get_rng_state()}
     if torch.backends.mps.is_available() and hasattr(torch.mps, "get_rng_state"):
         rng["mps"] = torch.mps.get_rng_state()
     atomic_torch_save({
-        "version": 1,
+        "version": CHECKPOINT_VERSION,
         "head": model.head.state_dict(),
         "backbone": model.backbone.state_dict(),
         "optimizer": opt.state_dict(),
@@ -53,29 +71,46 @@ def save_checkpoint(args, model, opt, sched, step, skipped):
         "skipped": skipped,
         "config": vars(args),
         "rng": rng,
+        "data_state": data_state,
+        "train_fingerprint": train_fingerprint,
     }, checkpoint_path)
     atomic_json_save({
         "step": step,
         "steps": args.steps,
         "skipped": skipped,
+        "epoch": data_state["epoch"],
+        "cursor": data_state["cursor"],
+        "train_size": len(data_state["order"]),
+        "train_fingerprint": train_fingerprint,
         "checkpoint": checkpoint_path,
         "updated_at_unix": time.time(),
     }, os.path.join(args.out, "progress.json"))
     print(f"checkpoint -> {checkpoint_path} (step {step})", flush=True)
 
 
-def load_checkpoint(args, model, opt, sched, device):
+def load_checkpoint(args, model, opt, sched, device, train_fingerprint,
+                    train_size):
     if args.resume == "none":
-        return 0, 0
+        return 0, 0, None
     path = (os.path.join(args.out, "checkpoint.pt")
             if args.resume == "auto" else args.resume)
     if not os.path.exists(path):
         if args.resume == "auto":
             print(f"no checkpoint at {path}; starting from step 0", flush=True)
-            return 0, 0
+            return 0, 0, None
         raise FileNotFoundError(path)
 
     ck = torch.load(path, map_location="cpu", weights_only=False)
+    if ck.get("version") != CHECKPOINT_VERSION:
+        raise ValueError(
+            f"checkpoint version {ck.get('version')} is not {CHECKPOINT_VERSION}")
+    required_keys = {
+        "head", "backbone", "optimizer", "scheduler", "step", "skipped",
+        "config", "rng", "data_state", "train_fingerprint",
+    }
+    missing = required_keys - set(ck)
+    if missing:
+        raise ValueError(f"checkpoint missing keys: {sorted(missing)}")
     required = ("backbone", "sources", "per_source", "eval_per_source", "steps",
                 "batch", "lr", "head_lr", "brier_w", "max_len", "seed")
     mismatches = {
@@ -85,6 +120,15 @@ def load_checkpoint(args, model, opt, sched, device):
     }
     if mismatches:
         raise ValueError(f"checkpoint configuration mismatch: {mismatches}")
+    if not 0 <= int(ck["step"]) <= args.steps:
+        raise ValueError(f"invalid checkpoint step: {ck['step']}")
+    if ck["train_fingerprint"] != train_fingerprint:
+        raise ValueError("checkpoint training-data fingerprint mismatch")
+    data_state = ck["data_state"]
+    if sorted(data_state.get("order", [])) != list(range(train_size)):
+        raise ValueError("checkpoint data order is not a permutation of training rows")
+    if not 0 <= int(data_state.get("cursor", -1)) <= train_size:
+        raise ValueError("checkpoint data cursor is outside the training order")
 
     model.backbone.load_state_dict(ck["backbone"])
     model.head.load_state_dict(ck["head"])
@@ -94,13 +138,16 @@ def load_checkpoint(args, model, opt, sched, device):
             if torch.is_tensor(value):
                 state[key] = value.to(device)
     sched.load_state_dict(ck["scheduler"])
+    if int(sched.last_epoch) != int(ck["step"]):
+        raise ValueError(
+            f"scheduler last_epoch {sched.last_epoch} != step {ck['step']}")
     random.setstate(ck["rng"]["python"])
     torch.set_rng_state(ck["rng"]["torch"])
     if ("mps" in ck["rng"] and torch.backends.mps.is_available()
             and hasattr(torch.mps, "set_rng_state")):
         torch.mps.set_rng_state(ck["rng"]["mps"])
     print(f"resumed {path} at step {ck['step']}", flush=True)
-    return int(ck["step"]), int(ck.get("skipped", 0))
+    return int(ck["step"]), int(ck.get("skipped", 0)), data_state
 
 
 def brier(logits, target):
@@ -205,7 +252,7 @@ def main():
             train += parents[k]
         print(f"{name}: {len(rows) - min(len(rows), args.eval_per_source)} train / "
               f"{min(len(rows), args.eval_per_source)} val")
-    random.shuffle(train)
+    train_fingerprint = dataset_fingerprint(train)
 
     backbone_decay, backbone_no_decay = [], []
     for p in model.backbone.parameters():
@@ -223,9 +270,20 @@ def main():
     model.train()
     sched = get_cosine_schedule_with_warmup(opt, int(0.06 * args.steps), args.steps)
 
-    step, skipped = load_checkpoint(args, model, opt, sched, device)
+    step, skipped, data_state = load_checkpoint(
+        args, model, opt, sched, device, train_fingerprint, len(train))
     os.makedirs(args.out, exist_ok=True)
     tok.save_pretrained(args.out)
+
+    if data_state is None:
+        order = list(range(len(train)))
+        random.shuffle(order)
+        epoch = 0
+        cursor = 0
+    else:
+        order = list(data_state["order"])
+        epoch = int(data_state["epoch"])
+        cursor = int(data_state["cursor"])
 
     stop_requested = False
 
@@ -238,13 +296,20 @@ def main():
     signal.signal(signal.SIGINT, request_stop)
 
     t0 = time.time()
+    start_step = step
     while step < args.steps:
-        random.shuffle(train)
+        if cursor >= len(order):
+            epoch += 1
+            order = list(range(len(train)))
+            random.shuffle(order)
+            cursor = 0
         updates_this_pass = 0
-        for i in range(0, len(train), args.batch):
+        while cursor < len(order):
             if step >= args.steps:
                 break
-            recs = [permute_choice(r, random) for r in train[i:i + args.batch]]
+            batch_indices = order[cursor:cursor + args.batch]
+            cursor += len(batch_indices)
+            recs = [permute_choice(train[i], random) for i in batch_indices]
             batch = collate(tok, recs, args.max_len)
             if any(batch["dropped_options"]):
                 keep = [r for r, d in zip(recs, batch["dropped_options"]) if not d]
@@ -268,25 +333,41 @@ def main():
             opt.zero_grad(set_to_none=True)
             step += 1
             updates_this_pass += 1
+            current_data_state = {
+                "epoch": epoch,
+                "order": order,
+                "cursor": cursor,
+            }
             if args.save_every > 0 and step % args.save_every == 0:
-                save_checkpoint(args, model, opt, sched, step, skipped)
+                save_checkpoint(args, model, opt, sched, step, skipped,
+                                current_data_state, train_fingerprint)
             if step % 25 == 0:
+                completed = max(1, step - start_step)
                 print(f"step {step}/{args.steps} loss {loss.item():.4f} "
-                      f"({(time.time() - t0) / step:.2f}s/step, skipped {skipped})")
+                      f"({(time.time() - t0) / completed:.2f}s/step since start, "
+                      f"skipped {skipped})")
             if stop_requested:
-                save_checkpoint(args, model, opt, sched, step, skipped)
+                save_checkpoint(args, model, opt, sched, step, skipped,
+                                current_data_state, train_fingerprint)
                 print("stopped with resumable checkpoint", flush=True)
                 return
         if updates_this_pass == 0:
             print("no trainable records survived a full pass — stopping")
             break
+        if step < args.steps:
+            epoch += 1
+            order = list(range(len(train)))
+            random.shuffle(order)
+            cursor = 0
 
     os.makedirs(args.out, exist_ok=True)
     atomic_torch_save({"head": model.head.state_dict(),
                        "backbone": model.backbone.state_dict(),
                        "config": vars(args),
                        "step": step}, f"{args.out}/model.pt")
-    save_checkpoint(args, model, opt, sched, step, skipped)
+    final_data_state = {"epoch": epoch, "order": order, "cursor": cursor}
+    save_checkpoint(args, model, opt, sched, step, skipped,
+                    final_data_state, train_fingerprint)
     print(f"saved -> {args.out}")
 
     # quick val pass: accuracy + ECE before temperature

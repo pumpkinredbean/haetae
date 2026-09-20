@@ -56,6 +56,10 @@ Verified on the real training path:
 - training continued through a new periodic step-100 checkpoint, proving optimizer/scheduler state was usable after restart;
 - an independent tiny-model round-trip restored weights, optimizer/scheduler state, step, skipped count, and progress metadata.
 
+6 Pro then found that v1 restored RNG but not the current shuffled data order or batch cursor, so resumed optimization diverged from an uninterrupted run. The v1 baseline was stopped safely at step 368 and retained under `runs/v1` as a debugging artifact.
+
+Checkpoint format v2 additionally stores and validates the epoch, full shuffled row order, next-batch cursor, training-row fingerprint, checkpoint version, required fields, step range, and scheduler `last_epoch == step`. Unit tests verify model/optimizer/scheduler/RNG/data-state restoration and reject a mismatched dataset fingerprint. The clean run uses `runs/v2`.
+
 ## State truncation audit
 
 At `max_len=768`, 1,700 source rows per ordinary source and 1,700 HelpSteer2 source rows expanded to 8,500 questions were audited with the actual tokenizer and packing budget.
@@ -71,19 +75,19 @@ The current step-100 checkpoint remains a documented 768-token baseline. Before 
 
 ```bash
 cd /Users/minkyu/workspace/haetae
-tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 768 --out runs/v1 --save-every 50 --resume auto 2>&1 | tee -a train_v1.log"
+tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 768 --out runs/v2 --save-every 50 --resume auto 2>&1 | tee -a train_v2.log"
 ```
 
 - tmux session: `haetae`
-- log: `/Users/minkyu/workspace/haetae/train_v1.log`
-- checkpoint: `/Users/minkyu/workspace/haetae/runs/v1/checkpoint.pt`
-- machine-readable progress: `/Users/minkyu/workspace/haetae/runs/v1/progress.json`
+- log: `/Users/minkyu/workspace/haetae/train_v2.log`
+- checkpoint: `/Users/minkyu/workspace/haetae/runs/v2/checkpoint.pt`
+- machine-readable progress: `/Users/minkyu/workspace/haetae/runs/v2/progress.json`
 
 ## Next actions
 
 1. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
 2. Ask 6 Pro to assess the measured HelpSteer2 truncation and choose a defensible baseline/ablation policy.
-3. Keep the resumed 768-token run progressing from step 100; if the process disappears, use `--resume auto` from `progress.json`.
+3. Start the exact-resume v2 768-token baseline in `runs/v2`; verify an interrupted run produces identical subsequent data order and a later checkpoint.
 4. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
 5. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
 6. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
