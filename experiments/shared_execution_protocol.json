@@ -31,6 +31,7 @@
     "max_absolute_log_probability_difference": 0.001,
     "minimum_reference_top_two_margin": 0.0002,
     "allowed_action_changes_above_margin": 0,
+    "evidence_integrity": "Each comparison stores authoritative reference and candidate logits. Resume and summary recompute probabilities, log probabilities, actions, margins, and differences at the declared temperatures, require the frozen candidate count, bind base candidates to packed logits, and verify a digest for every completed request transaction.",
     "stress_checks": [
       "question_order_reversal",
       "sibling_removal",

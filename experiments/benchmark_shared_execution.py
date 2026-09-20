@@ -977,7 +977,13 @@ def logits_cpu(outputs) -> list[list[list[float]]]:
 def comparison_metrics(reference: list[float], candidate: list[float], temperature: float):
     reference_tensor = torch.tensor(reference, dtype=torch.float64)
     candidate_tensor = torch.tensor(candidate, dtype=torch.float64)
-    if reference_tensor.shape != candidate_tensor.shape:
+    if (
+        reference_tensor.ndim != 1 or candidate_tensor.ndim != 1
+        or reference_tensor.numel() < 2
+        or reference_tensor.shape != candidate_tensor.shape
+        or not bool(torch.isfinite(reference_tensor).all())
+        or not bool(torch.isfinite(candidate_tensor).all())
+    ):
         raise ValueError("comparison logits have different shapes")
     reference_log = F.log_softmax(reference_tensor / temperature, dim=-1)
     candidate_log = F.log_softmax(candidate_tensor / temperature, dim=-1)
@@ -987,6 +993,8 @@ def comparison_metrics(reference: list[float], candidate: list[float], temperatu
     margin = float(top_values[0] - top_values[1])
     return {
         "temperature": temperature,
+        "reference_logits": reference_tensor.tolist(),
+        "candidate_logits": candidate_tensor.tolist(),
         "total_variation": float(
             0.5 * (reference_prob - candidate_prob).abs().sum()
         ),
@@ -1051,13 +1059,18 @@ def expected_equivalence_inventory(rows: list[dict]) -> dict[tuple, dict]:
     for row in rows:
         workload_id = row["workload_id"]
         common = {"parent_id": row["parent_id"], "suite": row["suite"]}
+        if len(row["candidate_counts"]) != len(row["question_ids"]):
+            raise ValueError("workload candidate counts differ from question identities")
         for index, question_id in enumerate(row["question_ids"]):
+            question = {
+                **common, "candidate_count": row["candidate_counts"][index],
+            }
             expected[("base_equivalence", workload_id, question_id)] = {
-                **common, "question_index": index,
+                **question, "question_index": index,
             }
             if row["question_count"] > 1:
                 for kind in ("question_order_reversal", "sibling_removal"):
-                    expected[(kind, workload_id, question_id)] = common
+                    expected[(kind, workload_id, question_id)] = question
         if "longest_diagnostic" in row["performance_panels"]:
             peers = [
                 candidate for candidate in by_suite[row["suite"]]
@@ -1076,6 +1089,7 @@ def expected_equivalence_inventory(rows: list[dict]) -> dict[tuple, dict]:
                     row["question_ids"][0],
                 )] = {
                     **common,
+                    "candidate_count": row["candidate_counts"][0],
                     "neighbor_workload_id": replacement["workload_id"],
                 }
             for kind, predicate in (
@@ -1096,9 +1110,10 @@ def expected_equivalence_inventory(rows: list[dict]) -> dict[tuple, dict]:
                             candidate["packed_length"], candidate["workload_id"],
                         ))
                     )
-                    for question_id in row["question_ids"]:
+                    for index, question_id in enumerate(row["question_ids"]):
                         expected[(kind, workload_id, question_id)] = {
                             **common,
+                            "candidate_count": row["candidate_counts"][index],
                             "neighbor_workload_id": neighbor["workload_id"],
                         }
         expected[("request_complete", workload_id, None)] = common
@@ -1121,6 +1136,8 @@ def validate_equivalence_transaction(
     workload_id = records[-1].get("workload_id")
     if not isinstance(workload_id, str):
         raise ValueError("equivalence completion lacks a workload identity")
+    if records[-1].get("observations_sha256") != value_sha256(records[:-1]):
+        raise ValueError("equivalence transaction digest differs")
     expected_keys = {key for key in expected if key[1] == workload_id}
     actual_keys = []
     for row in records:
@@ -1136,6 +1153,9 @@ def validate_equivalence_transaction(
         for field in ("question_index", "neighbor_workload_id"):
             if field in details and row.get(field) != details[field]:
                 raise ValueError(f"equivalence {field} differs from the workload")
+        validate_equivalence_observation(
+            row, details, protocol["design"]["equivalence"]["temperatures"],
+        )
         actual_keys.append(key)
     if len(actual_keys) != len(set(actual_keys)):
         raise ValueError("equivalence transaction contains duplicate observations")
@@ -1406,6 +1426,7 @@ def equivalence(args) -> dict:
                         "workload_id": row["workload_id"],
                         "parent_id": row["parent_id"],
                         "suite": row["suite"],
+                        "observations_sha256": value_sha256(records),
                     })
                     for record in records:
                         handle.write(canonical_bytes(record) + b"\n")
@@ -1874,56 +1895,101 @@ def finite_number(value) -> bool:
     )
 
 
-def validate_comparison_value(value: dict, temperature: float) -> None:
+def validate_logit_vector(value, candidate_count: int, label: str) -> list[float]:
+    if (
+        not isinstance(candidate_count, int) or isinstance(candidate_count, bool)
+        or candidate_count < 2
+        or not isinstance(value, list) or len(value) != candidate_count
+        or any(not finite_number(item) for item in value)
+    ):
+        raise ValueError(f"equivalence {label} logits are invalid")
+    return [float(item) for item in value]
+
+
+def validate_numeric_vector(actual, expected: list[float], label: str) -> None:
+    if (
+        not isinstance(actual, list) or len(actual) != len(expected)
+        or any(not finite_number(item) or item < 0 for item in actual)
+    ):
+        raise ValueError(f"equivalence {label} is invalid")
+    if any(
+        not math.isclose(float(item), wanted, rel_tol=1e-9, abs_tol=1e-12)
+        for item, wanted in zip(actual, expected)
+    ):
+        raise ValueError(f"equivalence {label} is inconsistent with logits")
+
+
+def validate_comparison_value(
+    value: dict, temperature: float, candidate_count: int,
+    expected_candidate_logits: list[float] | None = None,
+) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("equivalence comparison is not an object")
     if value.get("temperature") != temperature:
         raise ValueError("equivalence comparison temperature differs")
-    reference = value.get("reference_probabilities")
-    candidate = value.get("candidate_probabilities")
-    if (
-        not isinstance(reference, list) or not isinstance(candidate, list)
-        or len(reference) < 2 or len(reference) != len(candidate)
-        or any(not finite_number(item) or item < 0 for item in reference + candidate)
-    ):
-        raise ValueError("equivalence comparison probabilities are invalid")
-    if not math.isclose(sum(reference), 1.0, rel_tol=0.0, abs_tol=1e-9):
-        raise ValueError("equivalence reference probabilities do not sum to one")
-    if not math.isclose(sum(candidate), 1.0, rel_tol=0.0, abs_tol=1e-9):
-        raise ValueError("equivalence candidate probabilities do not sum to one")
-    total_variation = 0.5 * sum(
-        abs(left - right) for left, right in zip(reference, candidate)
+    reference_logits = validate_logit_vector(
+        value.get("reference_logits"), candidate_count, "reference",
     )
-    reference_action = max(range(len(reference)), key=reference.__getitem__)
-    candidate_action = max(range(len(candidate)), key=candidate.__getitem__)
-    top = sorted(reference, reverse=True)[:2]
-    checks = {
-        "total_variation": total_variation,
-        "reference_top_two_margin": top[0] - top[1],
-    }
-    for key, expected in checks.items():
+    candidate_logits = validate_logit_vector(
+        value.get("candidate_logits"), candidate_count, "candidate",
+    )
+    if expected_candidate_logits is not None and (
+        candidate_logits != [float(item) for item in expected_candidate_logits]
+    ):
+        raise ValueError("equivalence candidate logits differ from packed logits")
+    recomputed = comparison_metrics(
+        reference_logits, candidate_logits, temperature,
+    )
+    for key in ("reference_probabilities", "candidate_probabilities"):
+        validate_numeric_vector(value.get(key), recomputed[key], key)
+    for key in (
+        "total_variation", "max_absolute_log_probability_difference",
+        "reference_top_two_margin",
+    ):
         if not finite_number(value.get(key)) or not math.isclose(
-            value[key], expected, rel_tol=1e-9, abs_tol=1e-12,
+            float(value[key]), recomputed[key], rel_tol=1e-9, abs_tol=1e-12,
+        ):
+            raise ValueError(
+                f"equivalence comparison {key} is inconsistent with logits"
+            )
+    for key in ("reference_action", "candidate_action"):
+        if (
+            not isinstance(value.get(key), int)
+            or isinstance(value.get(key), bool)
+            or value[key] != recomputed[key]
         ):
             raise ValueError(f"equivalence comparison {key} is inconsistent")
-    if value.get("reference_action") != reference_action:
-        raise ValueError("equivalence reference action is inconsistent")
-    if value.get("candidate_action") != candidate_action:
-        raise ValueError("equivalence candidate action is inconsistent")
-    if not isinstance(value.get("action_changed"), bool) or (
-        value["action_changed"] != (reference_action != candidate_action)
+    if (
+        not isinstance(value.get("action_changed"), bool)
+        or value["action_changed"] != recomputed["action_changed"]
     ):
         raise ValueError("equivalence action-change flag is inconsistent")
-    log_difference = value.get("max_absolute_log_probability_difference")
-    if not finite_number(log_difference) or log_difference < 0:
-        raise ValueError("equivalence log-probability difference is invalid")
-    if min(reference + candidate) > 0:
-        expected_log_difference = max(
-            abs(math.log(left) - math.log(right))
-            for left, right in zip(reference, candidate)
+
+
+def validate_equivalence_observation(
+    row: dict, details: dict, temperatures: list[float],
+) -> None:
+    if row.get("kind") == "request_complete":
+        return
+    candidate_count = details.get("candidate_count")
+    comparisons = row.get("comparisons")
+    packed_logits = None
+    if row.get("kind") == "base_equivalence":
+        if not isinstance(comparisons, dict) or set(comparisons) != {"B", "S"}:
+            raise ValueError("base equivalence omits an execution arm")
+        packed_logits = validate_logit_vector(
+            row.get("packed_logits"), candidate_count, "packed",
         )
-        if not math.isclose(
-            log_difference, expected_log_difference, rel_tol=1e-8, abs_tol=1e-11,
-        ):
-            raise ValueError("equivalence log-probability difference is inconsistent")
+        groups = comparisons.values()
+    else:
+        groups = [comparisons]
+    for group in groups:
+        if not isinstance(group, list) or len(group) != len(temperatures):
+            raise ValueError("equivalence comparison count differs from protocol")
+        for item, temperature in zip(group, temperatures):
+            validate_comparison_value(
+                item, temperature, candidate_count, packed_logits,
+            )
 
 
 def validate_equivalence_coverage(
@@ -1948,47 +2014,22 @@ def validate_equivalence_coverage(
     validate_row_binding(
         header, protocol, workload_meta, metadata["device"],
     )
-    keys = set()
-    temperatures = design["equivalence"]["temperatures"]
+    completed = set()
+    transaction = []
     for row in rows[1:]:
-        validate_row_binding(
-            row, protocol, workload_meta, metadata["device"],
-        )
-        key = equivalence_record_key(row)
-        if key not in expected:
-            raise ValueError("equivalence result identity is not frozen")
-        if key in keys:
-            raise ValueError("equivalence result key is duplicated")
-        keys.add(key)
-        details = expected[key]
-        if row.get("parent_id") != details["parent_id"]:
-            raise ValueError("equivalence result parent differs from the workload")
-        if row.get("suite") != details["suite"]:
-            raise ValueError("equivalence result suite differs from the workload")
-        for field in ("question_index", "neighbor_workload_id"):
-            if field in details and row.get(field) != details[field]:
-                raise ValueError(f"equivalence result {field} differs")
-        if row["kind"] == "request_complete":
+        transaction.append(row)
+        if row.get("kind") != "request_complete":
             continue
-        comparisons = row.get("comparisons")
-        if row["kind"] == "base_equivalence":
-            if not isinstance(comparisons, dict) or set(comparisons) != {"B", "S"}:
-                raise ValueError("base equivalence omits an execution arm")
-            if (
-                not isinstance(row.get("packed_logits"), list)
-                or len(row["packed_logits"]) < 2
-                or any(not finite_number(value) for value in row["packed_logits"])
-            ):
-                raise ValueError("base equivalence packed logits are invalid")
-            groups = comparisons.values()
-        else:
-            groups = [comparisons]
-        for group in groups:
-            if not isinstance(group, list) or len(group) != len(temperatures):
-                raise ValueError("equivalence comparison count differs from protocol")
-            for item, temperature in zip(group, temperatures):
-                validate_comparison_value(item, temperature)
-    if keys != set(expected):
+        workload_id = validate_equivalence_transaction(
+            transaction, expected, protocol, workload_meta, metadata["device"],
+        )
+        if workload_id in completed:
+            raise ValueError("equivalence artifact repeats a completed workload")
+        completed.add(workload_id)
+        transaction = []
+    if transaction:
+        raise ValueError("equivalence artifact ends with an incomplete transaction")
+    if completed != {row["workload_id"] for row in workload_rows}:
         raise ValueError("equivalence artifact does not match the frozen inventory")
 
 

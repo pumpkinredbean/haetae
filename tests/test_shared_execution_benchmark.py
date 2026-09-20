@@ -19,9 +19,12 @@ from experiments.benchmark_shared_execution import (
     ordered_conditions,
     paired_ratio_bootstrap,
     request_identity,
+    validate_comparison_value,
+    validate_equivalence_coverage,
     validate_memory_coverage,
     validate_runtime_compatibility,
     validate_timing_coverage,
+    value_sha256,
     workload_row,
 )
 from experiments.shared_state import DELIMITER_TOKENS
@@ -280,6 +283,7 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
             "parent_id": "parent",
             "suite": "decision",
             "question_ids": ["question"],
+            "candidate_counts": [2],
             "question_count": 1,
             "packed_length": 5,
             "separate_lengths": [6],
@@ -289,6 +293,7 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
             "protocol_sha256": "protocol",
             "run": {"checkpoint_sha256": "checkpoint"},
             "design": {
+                "equivalence": {"temperatures": [1.0]},
                 "memory": {
                     "steady_state_requests": 1,
                     "request_batch_size": 1,
@@ -298,6 +303,25 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
             },
         }
         self.workload_meta = {"workloads_file_sha256": "workloads"}
+
+    def equivalence_records(self, binding):
+        packed_logits = [0.25, -0.25]
+        observations = [{
+            "kind": "base_equivalence", **binding,
+            "workload_id": "workload", "parent_id": "parent",
+            "suite": "decision", "question_id": "question",
+            "question_index": 0, "packed_logits": packed_logits,
+            "comparisons": {
+                arm: [comparison_metrics(packed_logits, packed_logits, 1.0)]
+                for arm in ("B", "S")
+            },
+        }]
+        return observations + [{
+            "kind": "request_complete", **binding,
+            "workload_id": "workload", "parent_id": "parent",
+            "suite": "decision",
+            "observations_sha256": value_sha256(observations),
+        }]
 
     def test_equivalence_journal_recovers_only_an_uncommitted_tail(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -309,19 +333,7 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
             binding = artifact_row_binding(
                 self.protocol, self.workload_meta, "cpu",
             )
-            records = [
-                {
-                    "kind": "base_equivalence", **binding,
-                    "workload_id": "workload", "parent_id": "parent",
-                    "suite": "decision", "question_id": "question",
-                    "question_index": 0,
-                },
-                {
-                    "kind": "request_complete", **binding,
-                    "workload_id": "workload", "parent_id": "parent",
-                    "suite": "decision",
-                },
-            ]
+            records = self.equivalence_records(binding)
             with path.open("ab") as handle:
                 for record in records:
                     handle.write((json.dumps(record) + "\n").encode())
@@ -342,19 +354,7 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
                 self.protocol, self.workload_meta, "cpu",
             )
             foreign = dict(binding, protocol_sha256="old")
-            records = [
-                {
-                    "kind": "base_equivalence", **foreign,
-                    "workload_id": "workload", "parent_id": "parent",
-                    "suite": "decision", "question_id": "question",
-                    "question_index": 0,
-                },
-                {
-                    "kind": "request_complete", **foreign,
-                    "workload_id": "workload", "parent_id": "parent",
-                    "suite": "decision",
-                },
-            ]
+            records = self.equivalence_records(foreign)
             with path.open("ab") as handle:
                 for record in records:
                     handle.write((json.dumps(record) + "\n").encode())
@@ -362,6 +362,85 @@ class SharedExecutionArtifactValidationTest(unittest.TestCase):
                 clean_incomplete_equivalence(
                     path, self.protocol, self.workload_meta, [self.row], "cpu",
                 )
+
+    def test_equivalence_journal_rejects_inconsistent_numerical_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "equivalence.jsonl"
+            clean_incomplete_equivalence(
+                path, self.protocol, self.workload_meta, [self.row], "cpu",
+            )
+            binding = artifact_row_binding(
+                self.protocol, self.workload_meta, "cpu",
+            )
+            records = self.equivalence_records(binding)
+            records[0]["packed_logits"] = [100.0, -100.0]
+            records[-1]["observations_sha256"] = value_sha256(records[:-1])
+            with path.open("ab") as handle:
+                for record in records:
+                    handle.write((json.dumps(record) + "\n").encode())
+            with self.assertRaisesRegex(ValueError, "differ from packed logits"):
+                clean_incomplete_equivalence(
+                    path, self.protocol, self.workload_meta, [self.row], "cpu",
+                )
+
+    def test_equivalence_summary_requires_frozen_candidate_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "equivalence.jsonl"
+            binding = artifact_row_binding(
+                self.protocol, self.workload_meta, "cpu",
+            )
+            records = [
+                {"kind": "journal_header", **binding},
+                *self.equivalence_records(binding),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in records))
+            metadata = {
+                "device": "cpu", "records": len(records), "requests": 1,
+                "kind_counts": {
+                    "journal_header": 1, "base_equivalence": 1,
+                    "request_complete": 1,
+                },
+            }
+            frozen_row = dict(self.row, candidate_counts=[3])
+            with self.assertRaisesRegex(ValueError, "packed logits are invalid"):
+                validate_equivalence_coverage(
+                    path, metadata, [frozen_row], self.protocol["design"],
+                    self.protocol, self.workload_meta,
+                )
+
+    def test_equivalence_summary_recomputes_metrics_from_logits(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "equivalence.jsonl"
+            binding = artifact_row_binding(
+                self.protocol, self.workload_meta, "cpu",
+            )
+            transaction = self.equivalence_records(binding)
+            transaction[0]["comparisons"]["B"][0]["reference_logits"] = [
+                100.0, -100.0,
+            ]
+            transaction[-1]["observations_sha256"] = value_sha256(transaction[:-1])
+            records = [{"kind": "journal_header", **binding}, *transaction]
+            path.write_text("".join(json.dumps(row) + "\n" for row in records))
+            metadata = {
+                "device": "cpu", "records": len(records), "requests": 1,
+                "kind_counts": {
+                    "journal_header": 1, "base_equivalence": 1,
+                    "request_complete": 1,
+                },
+            }
+            with self.assertRaisesRegex(ValueError, "inconsistent with logits"):
+                validate_equivalence_coverage(
+                    path, metadata, [self.row], self.protocol["design"],
+                    self.protocol, self.workload_meta,
+                )
+
+    def test_logit_validation_handles_probability_underflow(self):
+        valid = comparison_metrics([0.0, -744.0], [0.0, -744.00001], 1.0)
+        validate_comparison_value(valid, 1.0, 2)
+        inconsistent = comparison_metrics([0.0, -1000.0], [0.0, -1100.0], 1.0)
+        inconsistent["max_absolute_log_probability_difference"] = 0.0
+        with self.assertRaisesRegex(ValueError, "inconsistent with logits"):
+            validate_comparison_value(inconsistent, 1.0, 2)
 
     def test_timing_validation_rejects_nonpositive_duration(self):
         item = {

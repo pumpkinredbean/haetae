@@ -349,7 +349,9 @@ The corrected runner now:
 - rotates arms from a stable condition identity, independently of traversal order;
 - binds the fixed temperature to the accepted public-development report.
 
-The review's false-pass example now reports the correct P/B ratio `1.028` instead of `0.800`, and reversing input rows leaves the result unchanged. A result-blind public-development preflight freezes 3,963 requests and 7,227 questions, with 256 distinct multi-question parents, 64 distinct single-question control parents, and identical request schedules across all three repetitions. All 103 repository tests pass offline. These are implementation checks, not benchmark results.
+The review's false-pass example now reports the correct P/B ratio `1.028` instead of `0.800`, and reversing input rows leaves the result unchanged. A result-blind public-development preflight freezes 3,963 requests and 7,227 questions, with 256 distinct multi-question parents, 64 distinct single-question control parents, and identical request schedules across all three repetitions. These are implementation checks, not benchmark results.
+
+A second pre-measurement review confirmed those timing, memory, journal-binding, and counterbalancing corrections, then reproduced one remaining evidence-integrity defect: a resumed equivalence transaction could retain logits that contradicted its recorded probabilities, and summary validation did not require the frozen candidate count. The runner now stores authoritative reference and candidate logits for every comparison, derives every probability, log-probability error, action, margin, and difference from those logits during both recovery and summary, binds base candidates to the recorded packed logits, requires the frozen candidate count, and verifies a digest on every completed request transaction. Regression tests cover the resumed contradictory-logit case, candidate-count substitution, and probability underflow. All 107 repository tests pass offline.
 
 Next actions:
 
