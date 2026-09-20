@@ -244,6 +244,7 @@ An offline preflight loaded every declared remote source at its exact cached com
 - ChatGPT 6 Pro then reviewed exact commit `2485f24` from GitHub and returned `SHARED EXPERIMENT START` for one development-only MPS seed. Its 28 controlled checks closed both prior blockers and exercised the public fetcher, combined freezer, Korean conversion, required development paths, request-balanced loss, remapping, and exact-resume mechanics. It identified two nonblocking audit restrictions: the freezer trusted supplied state digests instead of hashing rendered model input, and macro-F1 accepted matching keys without proving matching label meaning.
 - Commit `0fad93144ba841541e50726ab982f0322189f366` closes both restrictions. The freezer now hashes the state produced by the runtime adapter, macro-F1 requires identical source, primitive, ordered keys, and ordered descriptions, and shared training requires a digest-bound rendered-state audit.
 - ChatGPT 6 Pro reviewed that exact commit and again returned `SHARED EXPERIMENT START`. Its 23 controlled probes verified the two corrections, audit rejection paths, result-blind filtering, and both evaluator integrations. It found one remaining comparison-only binding gap: a comparison plan could supply transfer or Korean suites different from those covered by the rendered-state audit. Commit `aafd461cd9a43901a51a21898650365bea06a4a8` rejects that mismatch both when freezing and when loading a plan. The actual frozen transfer and Korean bindings equal the audited bindings.
+- ChatGPT 6 Pro completed a narrow review of exact commit `aafd461cd9a43901a51a21898650365bea06a4a8` and returned `SHARED EXPERIMENT START`. It ran the five checked-in comparison-protocol tests plus 15 controlled probes. Substituted transfer or Korean suites, changed split digests or counts, missing split descriptors, and altered audit bytes were rejected before record access. It reported no additional training blocker and did not open either locked test.
 
 The Korean comparison suite was frozen before any candidate-model result was inspected:
 
@@ -287,11 +288,12 @@ tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 - run-spec SHA-256: `2797fc5a985c315f035658790c6ba582d634fe2ceeaa2d8fc5d35e78a100e9d5`
 - training-code SHA-256: `ff54ea26399fd9ad335eabba9d6f6a85a49880d8ac23b5217de665b10c2cc3fe`
 - generation 1 is the validated running checkpoint at step 0;
-- generation 2 is the first durable trained checkpoint at step 50, SHA-256 `2a53635a19f109fdd2ed128aaac373a6186255266f7920eef52f013b71fef40b`; the run continued past step 75 at approximately `1.51 s/update` including checkpoint time.
+- generation 2 is the first durable trained checkpoint at step 50, SHA-256 `2a53635a19f109fdd2ed128aaac373a6186255266f7920eef52f013b71fef40b`;
+- generation 6 is the latest validated checkpoint at step 250, SHA-256 `d9ecbbdce9a5257660215bdc9cd2d9627061a07534ba4579d9e98a15eb1e20dc`; the run continued past step 275 at approximately `1.38 s/update` including checkpoint time.
 
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
-2. Obtain a narrow follow-up check of the external-suite binding fix at `aafd461`.
-3. Complete the fresh shared-state MPS run from the frozen recipe.
-4. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
+2. Complete the fresh shared-state MPS run from the frozen recipe.
+3. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
+4. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
