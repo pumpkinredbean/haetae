@@ -72,6 +72,7 @@ class ComparisonProtocolTest(unittest.TestCase):
                 "decision": [], "transfer": [], "korean": [],
             },
             "excluded_calibration_requests": [],
+            "rendered_state_audit": {},
             "code": {},
         }
         plan["plan_sha256"] = canonical_sha256(plan)

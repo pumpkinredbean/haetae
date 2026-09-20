@@ -153,9 +153,7 @@ def select_korean_training(
 
 
 def request_state_identity(record: dict) -> str:
-    return record.get("_meta", {}).get("text_sha256") or digest_value(
-        record["state"]
-    )
+    return digest_value(normalize_request(record)["state"])
 
 
 def assert_disjoint(partitions: dict[str, list[dict]]) -> dict:

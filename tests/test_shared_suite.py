@@ -3,15 +3,21 @@ import unittest
 from experiments.freeze_shared_suite import assert_disjoint, select_korean_training
 
 
-def request(identifier, source="source", state=None):
+def request(identifier, source="source", state=None, text_sha256=None):
     return {
         "state": state or identifier,
-        "questions": {"q": {}},
+        "questions": {"q": {
+            "type": "noul",
+            "instructions": "decide",
+            "criteria": {},
+            "label": True,
+            "src": source,
+        }},
         "_meta": {
             "id": identifier,
             "group_id": identifier,
             "source": source,
-            "text_sha256": state or identifier,
+            "text_sha256": text_sha256 or state or identifier,
         },
     }
 
@@ -32,6 +38,24 @@ class SharedSuiteTest(unittest.TestCase):
                 "train": [request("train", state="shared-state")],
                 "calibration": [request("cal", state="shared-state")],
                 "development": [],
+            })
+
+    def test_disjoint_audit_does_not_trust_supplied_state_digest(self):
+        with self.assertRaisesRegex(ValueError, "partitions overlap"):
+            assert_disjoint({
+                "train": [request(
+                    "train", state="same", text_sha256="claimed-one",
+                )],
+                "development": [request(
+                    "dev", state="same", text_sha256="claimed-two",
+                )],
+            })
+
+    def test_disjoint_audit_hashes_rendered_model_state(self):
+        with self.assertRaisesRegex(ValueError, "partitions overlap"):
+            assert_disjoint({
+                "train": [request("train", state={"key": "value"})],
+                "development": [request("dev", state="key: value")],
             })
 
     def test_korean_training_removes_conflicts_and_calibration_overlap(self):

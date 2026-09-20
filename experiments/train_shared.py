@@ -24,6 +24,7 @@ from haetae.checkpoint import (
     restore_checkpoint,
     validate_checkpoint,
 )
+from experiments.audit_shared_suite import load_rendered_state_audit
 from experiments.kev_adapter import file_sha256, load_frozen_split
 from experiments.shared_state import encode_request, load_shared_state_model
 
@@ -42,10 +43,12 @@ def canonical_sha256(value) -> str:
 
 def source_identity(repository: Path) -> dict:
     files = [
+        repository / "experiments" / "audit_shared_suite.py",
         repository / "experiments" / "comparison_protocol.py",
         repository / "experiments" / "evaluate_baseline.py",
         repository / "experiments" / "evaluate_shared.py",
         repository / "experiments" / "freeze_comparison.py",
+        repository / "experiments" / "freeze_shared_suite.py",
         repository / "experiments" / "kev_adapter.py",
         repository / "experiments" / "shared_state.py",
         repository / "experiments" / "train_shared.py",
@@ -264,6 +267,7 @@ def train(args) -> None:
         raise ValueError("suite manifest changed while loading partitions")
     if not manifest.get("trainable_sources"):
         raise ValueError("suite does not declare trainable sources")
+    rendered_state_audit = load_rendered_state_audit(suite)
     prepare_checkpoint_arguments(args, manifest)
 
     random.seed(args.seed)
@@ -333,6 +337,12 @@ def train(args) -> None:
         "attention_implementation": "eager",
         "request_objective": "mean question loss, then mean request loss",
         "context_report": context_report,
+        "rendered_state_audit": {
+            "artifact_sha256": rendered_state_audit["artifact_sha256"],
+            "file_sha256": file_sha256(
+                suite / "rendered-state-audit.json"
+            ),
+        },
     }
 
     store = CheckpointStore(output)

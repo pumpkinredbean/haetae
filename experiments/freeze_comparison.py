@@ -8,6 +8,7 @@ from pathlib import Path
 
 from haetae.checkpoint import atomic_json_save, load_completed_checkpoint
 from haetae.measure import reconstruct_consumed
+from experiments.audit_shared_suite import load_rendered_state_audit
 from experiments.comparison_protocol import (
     PLAN_VERSION,
     canonical_sha256,
@@ -59,6 +60,7 @@ def freeze(args) -> dict:
         "transfer": Path(args.transfer_suite).resolve(),
         "korean": Path(args.korean_suite).resolve(),
     }
+    rendered_state_audit = load_rendered_state_audit(suites["decision"])
     calibration, _ = load_frozen_split(suites["decision"], "calibration")
     development = {
         key: load_frozen_split(path, "development")[0]
@@ -103,6 +105,12 @@ def freeze(args) -> dict:
             ),
             "korean": suite_binding(
                 suites["korean"], ("development.jsonl",),
+            ),
+        },
+        "rendered_state_audit": {
+            "artifact_sha256": rendered_state_audit["artifact_sha256"],
+            "file_sha256": file_sha256(
+                suites["decision"] / "rendered-state-audit.json"
             ),
         },
         "excluded_development_requests": exclusions,

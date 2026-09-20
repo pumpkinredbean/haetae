@@ -206,12 +206,17 @@ def reliability(confidences: list[float], correct: list[float], bins: int = 15):
 
 def macro_f1(predictions: list[dict], predicted_labels: list[int]) -> dict:
     ontologies = {
-        tuple(prediction.get("option_keys", prediction["options"]))
+        (
+            prediction["source"],
+            prediction["type"],
+            tuple(prediction.get("option_keys", prediction["options"])),
+            tuple(prediction["options"]),
+        )
         for prediction in predictions
     }
     if len(ontologies) != 1:
         return {"status": "not_applicable", "reason": "mixed option ontology"}
-    labels = range(len(next(iter(ontologies))))
+    labels = range(len(next(iter(ontologies))[2]))
     values = []
     for label in labels:
         true_positive = sum(

@@ -27,10 +27,12 @@ def request_state_sha256(request: dict) -> str:
 
 def comparison_code_identity(repository: Path) -> dict:
     files = [
+        repository / "experiments" / "audit_shared_suite.py",
         repository / "experiments" / "comparison_protocol.py",
         repository / "experiments" / "evaluate_baseline.py",
         repository / "experiments" / "evaluate_shared.py",
         repository / "experiments" / "freeze_comparison.py",
+        repository / "experiments" / "freeze_shared_suite.py",
         repository / "experiments" / "kev_adapter.py",
         repository / "src" / "haetae" / "calibrate.py",
         repository / "src" / "haetae" / "checkpoint.py",
@@ -65,6 +67,8 @@ def load_comparison_plan(path: str | Path, *, enforce_code: bool = True) -> dict
         raise ValueError("comparison plan exclusions are incomplete")
     if not isinstance(plan.get("excluded_calibration_requests"), list):
         raise ValueError("comparison calibration exclusions are incomplete")
+    if not isinstance(plan.get("rendered_state_audit"), dict):
+        raise ValueError("comparison rendered-state audit is missing")
     if enforce_code:
         repository = Path(__file__).resolve().parents[1]
         if comparison_code_identity(repository) != plan.get("code"):
@@ -80,6 +84,13 @@ def validate_suite_binding(plan: dict, key: str, suite: str | Path) -> dict:
     binding = plan["suites"][key]
     if file_sha256(manifest_path) != binding["manifest_sha256"]:
         raise ValueError(f"{key} suite manifest differs from the comparison plan")
+    if key == "decision":
+        audit_path = suite / "rendered-state-audit.json"
+        if file_sha256(audit_path) != plan["rendered_state_audit"][
+                "file_sha256"]:
+            raise ValueError(
+                "rendered-state audit differs from the comparison plan"
+            )
     manifest = json.loads(manifest_path.read_text())
     for filename, descriptor in binding["files"].items():
         if manifest.get("files", {}).get(filename) != descriptor:

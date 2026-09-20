@@ -103,6 +103,12 @@ class SharedEvaluationTest(unittest.TestCase):
         self.assertEqual(
             macro_f1(mixed, [0, 1])["status"], "not_applicable",
         )
+        different_meaning = [dict(same[0]), dict(same[1])]
+        different_meaning[1]["options"] = ["rent", "buy"]
+        self.assertEqual(
+            macro_f1(different_meaning, [0, 1])["status"],
+            "not_applicable",
+        )
 
 
 if __name__ == "__main__":

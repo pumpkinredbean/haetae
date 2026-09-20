@@ -144,6 +144,11 @@ Korean development:
 
     uv run python -m experiments.freeze_shared_suite --kev-suite evaluations/kev-decision-v7 --transfer-suite evaluations/kev-transfer-v4 --run-dir runs/baseline --korean-suite evaluations/korean-v1 --out evaluations/shared-v1
 
+Re-audit the frozen bytes using the exact rendered state text seen by the model.
+Training requires the resulting digest-bound sidecar:
+
+    uv run python -m experiments.audit_shared_suite --suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1
+
 Before inspecting either model on development data, freeze the comparison
 bindings and the common-clean subset. The plan removes complete development
 requests whose exact state was already consumed by the baseline train or
