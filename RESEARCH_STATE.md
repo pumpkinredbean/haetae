@@ -1,0 +1,70 @@
+# Haetae research state
+
+Status: active
+
+## Objective
+
+Build and evaluate a clean-room, local System One decision model that is structurally closer to Jev than ordinary NLI wrappers: one packed, non-generative forward pass per typed question; dynamic Choice, Noul, and Score outputs; calibrated probability evaluation; Korean support; and local serving through a Jev-compatible API.
+
+Success means a reproducible checkpoint, evaluation on named held-out datasets, calibration and selective-risk evidence, permutation/packing stress tests, measured local latency, and an external 6 Pro code review of the final implementation and results.
+
+## Repository and review thread
+
+- Repository: https://github.com/pumpkinredbean/haetae
+- Branch: `main`
+- Last pushed commit before checkpoint-resume work: `1f3eab2`
+- Aside conversation: `Clean Room Jev Reproduction`
+- Aside URL: https://chatgpt.com/c/6aaeba00-b670-83e8-9c29-3370b3c7945d
+- Review model: ChatGPT 6 Pro
+- Interaction method: Aside **REPL**, never Aside exec
+
+## Confirmed design
+
+- ModernBERT-base backbone.
+- One row per question: `[CLS] state [SEP] instructions [SEP] option1 [SEP] option2 ...`.
+- A shared scalar head reads the bidirectional hidden state of the separator preceding each option.
+- Candidate logits are normalized only within their question.
+- Choice order is augmented during training; Score order and Noul yes-first semantics remain fixed.
+- Hard/soft cross-entropy plus Brier is the clean baseline. CE plus ranked probability score for Score is the first planned loss ablation.
+- Training mixture has 13 sources, including KLUE-YNAT and NSMC for Korean.
+- Calibration claims must name the dataset and deployment conditions. Selective action uses a one-sided binomial risk bound, not ordinary conformal coverage alone.
+
+## 6 Pro findings already implemented
+
+- Optimizer now covers all trainable backbone decay/no-decay parameters and head parameters exactly once.
+- Candidate text cannot be silently truncated; the state yields token budget first.
+- Loss inputs, option count, target shapes, label bounds, finiteness, and normalization are validated.
+- Noul serving no longer splits `yes` into character candidates.
+- Civil Comments hard-label orientation is fixed.
+- HelpSteer2 groups all responses for the same prompt on one split.
+- Temperature is fitted in log space; conformal rank and binomial boundary cases are fixed.
+- Evaluation and serving explicitly handle rejected packs.
+- Multi-question serving batches all questions into one backbone call, while still encoding the state once per batch row.
+
+## Interruption finding
+
+The first long run reached step 400/3000 but had no periodic checkpoint and was lost when the execution session disappeared. `runs/v1/model.pt` predates that run and must not be treated as its result.
+
+Checkpoint-resume work is now being added to `src/haetae/train.py`: atomic `runs/v1/checkpoint.pt`, `runs/v1/progress.json`, model/optimizer/scheduler/config/RNG state, SIGTERM/SIGINT save, `--save-every 50`, and `--resume auto`.
+
+## Long-running command
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 768 --out runs/v1 --save-every 50 --resume auto 2>&1 | tee -a train_v1.log"
+```
+
+- tmux session: `haetae`
+- log: `/Users/minkyu/workspace/haetae/train_v1.log`
+- checkpoint: `/Users/minkyu/workspace/haetae/runs/v1/checkpoint.pt`
+- machine-readable progress: `/Users/minkyu/workspace/haetae/runs/v1/progress.json`
+
+## Next actions
+
+1. Validate the new checkpoint save/resume path with a small deterministic test.
+2. Commit and push checkpoint-resume code plus this state file.
+3. Send the exact new commit to 6 Pro for direct GitHub review.
+4. Start the full run with `--resume auto`; verify at least two periodic checkpoints and one real restart.
+5. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
+6. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
+7. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
