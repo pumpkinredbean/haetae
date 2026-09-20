@@ -455,4 +455,6 @@ The frozen gates all pass and the recorded outcome is `batch_one_speedup_confirm
 
 No locked test was opened. The original execution report remains unchanged.
 
+The measured review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-measured-v1.zip`, with SHA-256 `3001cfdb8af8ab336dc371ef041f7f2b046218639604abdc6709455e450946f7` and manifest SHA-256 `4dea7522bd877ac5f1065d2c9b9edd3fd9f349afcb586edb15d2b0c8e576542c`.
+
 2. Obtain ChatGPT 6 Pro review of the complete measured artifacts and the control-order interpretation. Treat any accepted result as warmed steady-state performance. Do not retrain or open either locked test.
