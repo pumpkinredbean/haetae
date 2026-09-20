@@ -99,7 +99,7 @@ The actual tokenizer and packing policy were audited on 1,700 rows per ordinary 
 
 The planned clean baseline uses 1,536 tokens. This sharply reduces HelpSteer2 response loss while keeping the configured batch size viable; 2,048 tokens is not viable for the measured worst-case batch.
 
-## Active long run
+## Resource-limited baseline attempt
 
 The reviewed baseline started from a fresh directory at 2026-09-20 14:15:56 KST. It uses MPS and the exact command below:
 
@@ -108,7 +108,7 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --max-len 1536 --out runs/v3 --save-every 50 --resume none 2>&1 | tee -a train_v3.log'"
 ```
 
-Resume the same run only with:
+The attempt is retained for checkpoint and resource evidence. Do not resume it as the final baseline:
 
 ```bash
 cd /Users/minkyu/workspace/haetae
@@ -131,10 +131,25 @@ tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATE
 - step 50 loss: 1.3141, with zero rejected batches and 2.17 seconds per step including initialization and checkpoint publication.
 - The first process reached 43 GiB of unified MPS memory while finishing update 97. SIGTERM completed the active backward pass and published interrupted generation 3 at step 97 with SHA-256 `044f50df0578e239f88b6966d8c20d06ebf58acf0953e0ec2c10d5987102b79c`.
 - The process resumed from that exact generation with an MPS soft collection threshold of 0.9 and hard allocation limit of 1.3 times the 28.08 GiB recommended working set. Generation 4 reached step 100 with SHA-256 `11d28983d09d8aafb7e193e5e938368721840f5168aef4f3541217bbc006e77e`.
+- The next long batch required more than the 36.50 GiB hard limit and raised an explicit MPS out-of-memory error. A final controlled resume and SIGTERM published interrupted generation 5 at step 101 with SHA-256 `e714f96a5af0443a00a339521fe520bea8782bcfbb566031e9d9e8c914141dba`.
+
+## Microbatch replacement
+
+The replacement recipe keeps an effective batch of eight questions but runs two four-question forward and backward passes before one clipped optimizer update. The run identity now records both effective batch and microbatch size.
+
+- A regression test compares batch 2 against two microbatches of 1 and matches final model parameters within `rtol=1e-6`, `atol=1e-7`, with identical scheduler state.
+- All 27 checkpoint, calibration, serving, and certification tests pass, including native MPS restore and the new accumulation test.
+- A real ModernBERT MPS probe selected the eight longest HelpSteer2 questions from the measured pool and processed them as two microbatches of four at 1,536 tokens. The two passes took 3.165 and 2.912 seconds, peaked at 18.03 GiB driver allocation, and completed the AdamW update in 6.526 seconds. After cache release the driver allocation was 9.03 GiB.
+- No training process is active until the microbatch commit is reviewed. Start the replacement only in a fresh `runs/v3-micro4` directory.
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-v3m4 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --microbatch 4 --max-len 1536 --out runs/v3-micro4 --save-every 50 --resume none 2>&1 | tee -a train_v3_micro4.log'"
+```
 
 ## Next actions
 
-1. Monitor each durable generation and resume only from the authoritative manifest if the process stops.
+1. Obtain an exact-commit review of microbatch accumulation and its run identity, then start the fresh replacement run.
 2. Correct the certification protocol without modifying the active run's `data.py`, `model.py`, or `train.py`: use valid labeled source splits, parent-disjoint roles, raw and calibrated metrics, conformal coverage, frozen selective rules, Choice-only stress tests, synchronized latency, and digest-bound JSON output.
 3. After completion, evaluate the baseline on its held-out sources and the frozen `kev` transfer development suite, then measure CPU and MPS latency.
 4. Design the shared-state architecture as a separate run rather than changing this baseline in place.

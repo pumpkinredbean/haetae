@@ -56,7 +56,8 @@ class TinyTokenizer:
 def make_args(output, resume="none", steps=10):
     return argparse.Namespace(
         out=str(output), resume=resume, backbone="tiny", sources="fixture",
-        per_source=1, eval_per_source=1, steps=steps, batch=1, lr=1e-3,
+        per_source=1, eval_per_source=1, steps=steps, batch=1, microbatch=1,
+        lr=1e-3,
         head_lr=2e-3, brier_w=0.5, max_len=32, seed=17,
         save_every=2,
     )
@@ -166,6 +167,71 @@ def run_fixture_updates(model, optimizer, scheduler, records, data_state,
 
 
 class ResumeTest(unittest.TestCase):
+    def test_microbatch_accumulation_matches_full_batch_update(self):
+        records = [
+            {"row": index + 1, "state": str(index), "type": "choice",
+             "instructions": "pick", "options": ["a", "b"],
+             "label": index % 2, "soft": None, "source": "fixture",
+             "parent": f"row-{index}"}
+            for index in range(5)
+        ]
+
+        def fixture_collate(tokenizer, batch_records, max_len):
+            values = torch.tensor([
+                [float(record["row"]), 1.0] for record in batch_records
+            ])
+            return {
+                "input_ids": values,
+                "attention_mask": torch.ones_like(values),
+                "option_pos": torch.empty(0, dtype=torch.long),
+                "group_ptr": torch.arange(len(batch_records) + 1),
+                "n_options": [2] * len(batch_records),
+                "dropped_options": [False] * len(batch_records),
+            }
+
+        def run_once(output, microbatch):
+            args = make_args(output, steps=2)
+            args.per_source = 4
+            args.eval_per_source = 1
+            args.batch = 2
+            args.microbatch = microbatch
+            template = TinyDecisionModel()
+            optimizer, _ = make_entrypoint_training(args, template)
+            spec = make_spec(args, template, optimizer)
+            patches = (
+                mock.patch("haetae.train.AutoTokenizer.from_pretrained",
+                           return_value=TinyTokenizer()),
+                mock.patch("haetae.train.HaetaeModel",
+                           side_effect=lambda _: TinyDecisionModel()),
+                mock.patch.dict("haetae.train.LOADERS", {
+                    "fixture": lambda split, limit: iter(copy.deepcopy(records))
+                }),
+                mock.patch("haetae.train.collate",
+                           side_effect=fixture_collate),
+                mock.patch("haetae.train.make_run_spec", return_value=spec),
+                mock.patch("haetae.train.torch.backends.mps.is_available",
+                           return_value=False),
+                mock.patch("haetae.eval.evaluate"),
+            )
+            with (patches[0], patches[1], patches[2], patches[3], patches[4],
+                  patches[5], patches[6]):
+                train(args)
+            payload, _, _ = load_completed_checkpoint(output)
+            return payload
+
+        with tempfile.TemporaryDirectory() as full_dir, \
+                tempfile.TemporaryDirectory() as micro_dir:
+            full = run_once(full_dir, 2)
+            micro = run_once(micro_dir, 1)
+            for section in ("backbone", "head"):
+                self.assertEqual(full[section].keys(), micro[section].keys())
+                for name in full[section]:
+                    torch.testing.assert_close(
+                        full[section][name], micro[section][name],
+                        rtol=1e-6, atol=1e-7,
+                    )
+            self.assertEqual(full["scheduler"], micro["scheduler"])
+
     def test_tokenizer_fingerprint_covers_pipeline_not_only_vocab(self):
         class Backend:
             def __init__(self, normalizer):

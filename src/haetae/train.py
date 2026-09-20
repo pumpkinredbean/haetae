@@ -112,6 +112,10 @@ def main():
     ap.add_argument("--eval-per-source", type=int, default=300)
     ap.add_argument("--steps", type=int, default=1500)
     ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument(
+        "--microbatch", type=int,
+        help="questions per forward/backward pass; defaults to --batch",
+    )
     ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--head-lr", type=float, default=2e-4)
     ap.add_argument("--brier-w", type=float, default=0.5)
@@ -122,12 +126,24 @@ def main():
     ap.add_argument("--resume", choices=("none", "auto"), default="none",
                     help="start a new run or resume its validated manifest")
     args = ap.parse_args()
+    if args.microbatch is None:
+        args.microbatch = args.batch
 
     with RunDirectoryLock(args.out):
         train(args)
 
 
 def train(args):
+
+    if not hasattr(args, "microbatch") or args.microbatch is None:
+        args.microbatch = args.batch
+    if (isinstance(args.batch, bool) or not isinstance(args.batch, int)
+            or args.batch <= 0):
+        raise ValueError("batch must be a positive integer")
+    if (isinstance(args.microbatch, bool)
+            or not isinstance(args.microbatch, int)
+            or not 1 <= args.microbatch <= args.batch):
+        raise ValueError("microbatch must be a positive integer no larger than batch")
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -320,22 +336,38 @@ def train(args):
                     continue
                 recs = keep
                 batch = collate(tok, recs, args.max_len)
-            logits = model(
-                batch["input_ids"].to(device),
-                batch["attention_mask"].to(device),
-                batch["option_pos"].to(device),
-                batch["group_ptr"].to(device),
-            )
-            targets = [
-                to_target(record, count)
-                for record, count in zip(recs, batch["n_options"])
-            ]
-            loss = batch_loss(logits, targets, args.brier_w)
-            loss.backward()
+            log_update = (step + 1) % 25 == 0
+            logged_loss = 0.0
+            for micro_start in range(0, len(recs), args.microbatch):
+                micro_records = recs[micro_start:micro_start + args.microbatch]
+                if micro_start == 0 and len(micro_records) == len(recs):
+                    micro = batch
+                else:
+                    micro = collate(tok, micro_records, args.max_len)
+                logits = model(
+                    micro["input_ids"].to(device),
+                    micro["attention_mask"].to(device),
+                    micro["option_pos"].to(device),
+                    micro["group_ptr"].to(device),
+                )
+                targets = [
+                    to_target(record, count)
+                    for record, count in zip(micro_records, micro["n_options"])
+                ]
+                micro_loss = batch_loss(logits, targets, args.brier_w)
+                weight = len(micro_records) / len(recs)
+                (micro_loss * weight).backward()
+                if log_update:
+                    logged_loss += float(micro_loss.detach()) * weight
+                del logits, targets, micro_loss
+                if device == "mps":
+                    torch.mps.empty_cache()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             sched.step()
             opt.zero_grad(set_to_none=True)
+            if device == "mps":
+                torch.mps.empty_cache()
             step += 1
             updates_in_epoch += 1
             current_data_state = {
@@ -348,7 +380,7 @@ def train(args):
             if step % 25 == 0:
                 completed = max(1, step - start_step)
                 print(
-                    f"step {step}/{args.steps} loss {loss.item():.4f} "
+                    f"step {step}/{args.steps} loss {logged_loss:.4f} "
                     f"({(time.time() - t0) / completed:.2f}s/step since start, "
                     f"skipped {skipped})",
                     flush=True,

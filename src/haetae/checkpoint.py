@@ -27,7 +27,7 @@ MANIFEST_VERSION = 1
 RUN_VERSION = 1
 TRAINING_CONFIG_FIELDS = (
     "backbone", "sources", "per_source", "eval_per_source", "steps",
-    "batch", "lr", "head_lr", "brier_w", "max_len", "seed",
+    "batch", "microbatch", "lr", "head_lr", "brier_w", "max_len", "seed",
 )
 RUN_STATUSES = {"running", "interrupted", "completed", "failed_no_progress"}
 UNKNOWN_PRODUCER = hashlib.sha256(b"unknown producer").hexdigest()

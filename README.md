@@ -61,6 +61,12 @@ It shares no weights, no training data, and no outputs with Jev.
     uv sync
     uv run python -m haetae.train --sources ag_news,boolq,sst5,banking77,klue_ynat,nsmc --out runs/baseline --resume none
 
+When the effective batch does not fit accelerator memory, split one
+optimizer update into smaller forward and backward passes. For example,
+`--batch 8 --microbatch 4` preserves the eight-question mean loss while
+holding activations for at most four questions at a time. Both values are
+part of the immutable run identity.
+
 Resume the same immutable run after an interruption:
 
     uv run python -m haetae.train --sources ag_news,boolq,sst5,banking77,klue_ynat,nsmc --out runs/baseline --resume auto
