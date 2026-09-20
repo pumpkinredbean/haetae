@@ -312,7 +312,16 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-baseline-dev "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv run python -u -m experiments.evaluate_baseline --run runs/v3-micro4 --comparison-plan evaluations/comparison-v1/plan.json --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 4 --out evaluations/baseline-development.json 2>&1 | tee -a evaluate_baseline_development.log'"
 ```
 
-After it completes, run the shared-state evaluation in session `haetae-shared-dev`, log `evaluate_shared_development.log`, and output `evaluations/shared-v1-development.json` with batch size 2. Neither evaluator opens a locked test split.
+The baseline evaluation completed with report SHA-256 `ed00a9a69420d478f7b751bcd69bc8171ffcca863f77175443d024a0abac2313` and file SHA-256 `20fd43e8db495bef1aadf6c3f73977d58042686d6f87e32a1c3e221234aa648b`. Its fitted temperature is `1.50927104494036`. Common-clean source-macro accuracy is `0.4992` on decision development, `0.5097` on transfer development, and `0.4206` on Korean development.
+
+The shared-state evaluation uses the same frozen membership:
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-shared-dev "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv run python -u -m experiments.evaluate_shared --run runs/shared-v1 --comparison-plan evaluations/comparison-v1/plan.json --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 2 --out evaluations/shared-v1-development.json 2>&1 | tee -a evaluate_shared_development.log'"
+```
+
+Session: `haetae-shared-dev`; log: `evaluate_shared_development.log`; output: `evaluations/shared-v1-development.json`. Neither evaluator opens a locked test split.
 
 ## Next actions
 
