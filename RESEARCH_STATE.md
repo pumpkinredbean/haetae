@@ -323,9 +323,18 @@ tmux new-session -d -s haetae-shared-dev "zsh -lc 'set -o pipefail; HF_HUB_OFFLI
 
 Session: `haetae-shared-dev`; log: `evaluate_shared_development.log`; output: `evaluations/shared-v1-development.json`. Neither evaluator opens a locked test split.
 
+The shared-state evaluation completed with report SHA-256 `8dbe775cd09539b9d366047aa886717a9344dd2a271aa65dd030663b0f8a1d97` and file SHA-256 `960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23`. Its fitted temperature is `1.5197255188671874`. Common-clean source-macro accuracy is `0.5990` on decision development, `0.4869` on transfer development, and `0.8088` on Korean development. Shared packing reduces unpadded decision-development tokens by `8.59%` and Korean-development tokens by `17.56%`; these remain token-count results rather than latency claims.
+
+The accepted paired comparison has report SHA-256 `19c1d1493ef521e0e339697ee1f6c9e845f6390535f0c94a8e27be6537c6ee43` and file SHA-256 `4d81804932a96afadd568ff4668c44c7cd993bd9ba8587ddc6042e015908b343`. Shared minus baseline source-macro accuracy is:
+
+- decision: `+0.0998`, parent-bootstrap 95% interval `[+0.0686, +0.1322]`;
+- transfer: `-0.0228`, interval `[-0.0570, +0.0126]`;
+- Korean: `+0.3881`, interval `[+0.3684, +0.4073]`.
+
+Decision and Korean NLL and both Brier differences favor shared with intervals excluding zero. Transfer source-macro NLL is `+0.0789`, interval `[+0.0464, +0.1117]`, and Brier is `+0.0330`, interval approximately `[+0.0123, +0.0534]`, so transfer calibration is materially worse despite the accuracy interval crossing zero. The largest transfer accuracy losses are emotion `-0.2845` and offensive-tweet detection `-0.1375`; the Score transfer cell improves by `+0.2250`. All 89 repository tests pass offline. No locked test was opened.
+
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
-2. Evaluate the baseline and completed shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
-3. Produce the accepted paired fixed-incidence comparison.
-4. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
+2. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
+3. Implement and run the smallest development-only ablation that distinguishes architecture gains from recipe and transfer-mixture effects.
