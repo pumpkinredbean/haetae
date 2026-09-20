@@ -4,6 +4,7 @@ import json
 import random
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -17,8 +18,10 @@ from haetae.checkpoint import (
     RunDirectoryLock,
     TRAINING_CONFIG_FIELDS,
     checkpoint_payload,
+    load_completed_checkpoint,
     optimizer_signature,
     restore_checkpoint,
+    tokenizer_fingerprint,
     validate_checkpoint,
 )
 from haetae.train import permute_choice, train
@@ -39,6 +42,9 @@ class TinyDecisionModel(TinyModel):
 
 class TinyTokenizer:
     special_tokens_map = {"pad_token": "[PAD]"}
+    model_max_length = 32
+    padding_side = "right"
+    truncation_side = "right"
 
     def get_vocab(self):
         return {"[PAD]": 0, "x": 1}
@@ -111,6 +117,10 @@ def update_once(model, optimizer, scheduler):
     optimizer.zero_grad(set_to_none=True)
 
 
+def publish_fixture(store, payload, status):
+    return store.publish(payload, status, lambda _: None)
+
+
 def run_fixture_updates(model, optimizer, scheduler, records, data_state,
                         start_step, target_step):
     order = list(data_state["order"])
@@ -156,6 +166,25 @@ def run_fixture_updates(model, optimizer, scheduler, records, data_state,
 
 
 class ResumeTest(unittest.TestCase):
+    def test_tokenizer_fingerprint_covers_pipeline_not_only_vocab(self):
+        class Backend:
+            def __init__(self, normalizer):
+                self.normalizer = normalizer
+
+            def to_str(self):
+                return json.dumps({
+                    "model": {"vocab": {"x": 0}},
+                    "normalizer": self.normalizer,
+                })
+
+        first = TinyTokenizer()
+        first.backend_tokenizer = Backend("lowercase")
+        second = TinyTokenizer()
+        second.backend_tokenizer = Backend("identity")
+        self.assertNotEqual(
+            tokenizer_fingerprint(first), tokenizer_fingerprint(second)
+        )
+
     def test_resume_after_rejected_epoch_tail_reaches_next_epoch(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = make_args(temporary, resume="auto", steps=2)
@@ -186,7 +215,7 @@ class ResumeTest(unittest.TestCase):
             spec = make_spec(args, model, optimizer)
             store = CheckpointStore(temporary)
             run = store.start(spec)
-            store.publish(checkpoint_payload(
+            publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 1, 0,
                 {"epoch": 0, "order": [0, 1], "cursor": 1},
                 "interrupted",
@@ -250,7 +279,7 @@ class ResumeTest(unittest.TestCase):
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
-            store.publish(checkpoint_payload(
+            publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 1, 0,
                 {"epoch": 0, "order": [0], "cursor": 1}, "interrupted",
             ), "interrupted")
@@ -329,7 +358,7 @@ class ResumeTest(unittest.TestCase):
             spec = make_spec(args, split_model, split_optimizer)
             store = CheckpointStore(temporary)
             run = store.start(spec)
-            store.publish(checkpoint_payload(
+            publish_fixture(store, checkpoint_payload(
                 run, args, split_model, split_optimizer, split_scheduler,
                 4, 0, split_data, "interrupted",
             ), "interrupted")
@@ -384,7 +413,7 @@ class ResumeTest(unittest.TestCase):
                 run, args, model, optimizer, scheduler, 1, 4,
                 data_state, "running",
             )
-            store.publish(payload, "running")
+            publish_fixture(store, payload, "running")
             expected_python_random = random.random()
             expected_torch_random = torch.rand(3)
 
@@ -427,13 +456,13 @@ class ResumeTest(unittest.TestCase):
             data_state = {"epoch": 0, "order": [0, 1], "cursor": 1}
 
             update_once(model, optimizer, scheduler)
-            first = store.publish(checkpoint_payload(
+            first = publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 1, 0,
                 data_state, "running",
             ), "running")
             update_once(model, optimizer, scheduler)
             data_state["cursor"] = 2
-            second = store.publish(checkpoint_payload(
+            second = publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 2, 0,
                 data_state, "running",
             ), "running")
@@ -459,6 +488,53 @@ class ResumeTest(unittest.TestCase):
             self.assertEqual(events[-1]["rejected_generation"], second["generation"])
             self.assertEqual(events[-1]["selected_generation"], first["generation"])
 
+    def test_recovery_ignores_derived_progress_write_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            data_state = {"epoch": 0, "order": [0, 1], "cursor": 1}
+            update_once(model, optimizer, scheduler)
+            publish_fixture(store, checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                data_state, "running",
+            ), "running")
+            update_once(model, optimizer, scheduler)
+            data_state["cursor"] = 2
+            current = publish_fixture(store, checkpoint_payload(
+                run, args, model, optimizer, scheduler, 2, 0,
+                data_state, "running",
+            ), "running")
+            Path(temporary, current["path"]).unlink()
+
+            resumed_model, resumed_optimizer, resumed_scheduler = make_training(args)
+            resumed = CheckpointStore(temporary)
+            resumed_run = resumed.open(spec)
+            real_atomic_save = checkpoint_module.atomic_json_save
+
+            def fail_progress(payload, path):
+                if Path(path).name == "progress.json":
+                    raise OSError("injected progress failure")
+                return real_atomic_save(payload, path)
+
+            with mock.patch("haetae.checkpoint.atomic_json_save",
+                            side_effect=fail_progress):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    loaded, role, _ = resumed.load(
+                        lambda candidate: validate_checkpoint(
+                            candidate, resumed_run, args, resumed_model,
+                            resumed_optimizer, resumed_scheduler, 2, "cpu"
+                        )
+                    )
+            self.assertTrue(any(
+                "recovery succeeded" in str(item.message) for item in caught
+            ))
+            self.assertEqual(role, "previous")
+            self.assertEqual(loaded["step"], 1)
+
     def test_semantically_invalid_current_generation_does_not_roll_back(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = make_args(temporary)
@@ -469,7 +545,7 @@ class ResumeTest(unittest.TestCase):
             data_state = {"epoch": 0, "order": [0, 1], "cursor": 1}
 
             update_once(model, optimizer, scheduler)
-            store.publish(checkpoint_payload(
+            publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 1, 0,
                 data_state, "running",
             ), "running")
@@ -482,7 +558,7 @@ class ResumeTest(unittest.TestCase):
             first_head_key = next(iter(invalid["head"]))
             invalid["head"][first_head_key] = invalid["head"][first_head_key].clone()
             invalid["head"][first_head_key].reshape(-1)[0] = float("nan")
-            store.publish(invalid, "running")
+            publish_fixture(store, invalid, "running")
 
             new_model, new_optimizer, new_scheduler = make_training(args)
             resumed = CheckpointStore(temporary)
@@ -496,6 +572,60 @@ class ResumeTest(unittest.TestCase):
                 )
             self.assertFalse(Path(temporary, "recovery_events.json").exists())
 
+    def test_malformed_descriptor_does_not_roll_back(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            data_state = {"epoch": 0, "order": [0, 1], "cursor": 1}
+            update_once(model, optimizer, scheduler)
+            publish_fixture(store, checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                data_state, "running",
+            ), "running")
+            update_once(model, optimizer, scheduler)
+            data_state["cursor"] = 2
+            publish_fixture(store, checkpoint_payload(
+                run, args, model, optimizer, scheduler, 2, 0,
+                data_state, "running",
+            ), "running")
+            manifest_path = Path(temporary, "latest.json")
+            manifest = json.loads(manifest_path.read_text())
+            manifest["current"]["size"] = "not-an-integer"
+            manifest_path.write_text(json.dumps(manifest))
+
+            new_model, new_optimizer, new_scheduler = make_training(args)
+            resumed = CheckpointStore(temporary)
+            resumed_run = resumed.open(spec)
+            with self.assertRaisesRegex(CheckpointError, "size is invalid"):
+                resumed.load(
+                    lambda candidate: validate_checkpoint(
+                        candidate, resumed_run, args, new_model, new_optimizer,
+                        new_scheduler, 2, "cpu"
+                    )
+                )
+            self.assertFalse(Path(temporary, "recovery_events.json").exists())
+
+    def test_completed_loader_uses_run_target_and_configuration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            update_once(model, optimizer, scheduler)
+            payload = checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                {"epoch": 0, "order": [0], "cursor": 1}, "completed",
+            )
+            payload["config"] = dict(payload["config"])
+            payload["config"]["steps"] = 1
+            publish_fixture(store, payload, "completed")
+            with self.assertRaisesRegex(CheckpointError, "configuration differs"):
+                load_completed_checkpoint(temporary)
+
     def test_manifest_failure_keeps_prior_generation_authoritative(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = make_args(temporary)
@@ -506,7 +636,7 @@ class ResumeTest(unittest.TestCase):
             data_state = {"epoch": 0, "order": [0, 1], "cursor": 1}
 
             update_once(model, optimizer, scheduler)
-            first = store.publish(checkpoint_payload(
+            first = publish_fixture(store, checkpoint_payload(
                 run, args, model, optimizer, scheduler, 1, 0,
                 data_state, "running",
             ), "running")
@@ -526,7 +656,7 @@ class ResumeTest(unittest.TestCase):
             with mock.patch("haetae.checkpoint.atomic_json_save",
                             side_effect=fail_manifest):
                 with self.assertRaisesRegex(OSError, "injected manifest"):
-                    store.publish(second_payload, "running")
+                    publish_fixture(store, second_payload, "running")
 
             manifest = json.loads(Path(temporary, "latest.json").read_text())
             self.assertEqual(manifest["current"]["path"], first["path"])
@@ -543,6 +673,102 @@ class ResumeTest(unittest.TestCase):
             self.assertEqual(role, "current")
             self.assertEqual(failures, [])
             self.assertEqual(loaded["step"], 1)
+
+    def test_invalid_rng_is_rejected_before_live_state_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            update_once(model, optimizer, scheduler)
+            payload = checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                {"epoch": 0, "order": [0, 1], "cursor": 1}, "running",
+            )
+            payload["rng"]["python"] = ("invalid",)
+            publish_fixture(store, payload, "running")
+
+            target_model, target_optimizer, target_scheduler = make_training(args)
+            before = copy.deepcopy(target_model.state_dict())
+            resumed = CheckpointStore(temporary)
+            resumed_run = resumed.open(spec)
+            with self.assertRaisesRegex(CheckpointError, "Python RNG"):
+                resumed.load(
+                    lambda candidate: validate_checkpoint(
+                        candidate, resumed_run, args, target_model,
+                        target_optimizer, target_scheduler, 2, "cpu"
+                    )
+                )
+            for key, value in before.items():
+                self.assertTrue(torch.equal(target_model.state_dict()[key], value))
+            self.assertEqual(target_optimizer.state, {})
+
+    def test_invalid_scheduler_is_rejected_before_live_state_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            update_once(model, optimizer, scheduler)
+            payload = checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                {"epoch": 0, "order": [0, 1], "cursor": 1}, "running",
+            )
+            payload["scheduler"]["lr_lambdas"] = ["invalid"]
+            publish_fixture(store, payload, "running")
+
+            target_model, target_optimizer, target_scheduler = make_training(args)
+            before = copy.deepcopy(target_model.state_dict())
+            resumed = CheckpointStore(temporary)
+            resumed_run = resumed.open(spec)
+            with self.assertRaisesRegex(CheckpointError, "function state"):
+                resumed.load(
+                    lambda candidate: validate_checkpoint(
+                        candidate, resumed_run, args, target_model,
+                        target_optimizer, target_scheduler, 2, "cpu"
+                    )
+                )
+            for key, value in before.items():
+                self.assertTrue(torch.equal(target_model.state_dict()[key], value))
+            self.assertEqual(target_optimizer.state, {})
+
+    def test_boolean_adam_counter_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = make_args(temporary)
+            model, optimizer, scheduler = make_training(args)
+            spec = make_spec(args, model, optimizer)
+            store = CheckpointStore(temporary)
+            run = store.start(spec)
+            update_once(model, optimizer, scheduler)
+            payload = checkpoint_payload(
+                run, args, model, optimizer, scheduler, 1, 0,
+                {"epoch": 0, "order": [0, 1], "cursor": 1}, "running",
+            )
+            first_state = next(iter(payload["optimizer"]["state"].values()))
+            first_state["step"] = torch.tensor(True)
+            publish_fixture(store, payload, "running")
+
+            target_model, target_optimizer, target_scheduler = make_training(args)
+            resumed = CheckpointStore(temporary)
+            resumed_run = resumed.open(spec)
+            with self.assertRaisesRegex(CheckpointError, "step counter"):
+                resumed.load(
+                    lambda candidate: validate_checkpoint(
+                        candidate, resumed_run, args, target_model,
+                        target_optimizer, target_scheduler, 2, "cpu"
+                    )
+                )
+
+    def test_fresh_run_rejects_any_stale_artifact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            Path(temporary, "calibration.json").write_text("{}")
+            args = make_args(temporary)
+            model, optimizer, _ = make_training(args)
+            store = CheckpointStore(temporary)
+            with self.assertRaisesRegex(CheckpointError, "populated"):
+                store.start(make_spec(args, model, optimizer))
 
     def test_run_lock_rejects_a_second_writer(self):
         with tempfile.TemporaryDirectory() as temporary:

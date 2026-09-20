@@ -17,7 +17,11 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
 
-from .calibrate import certify_selective_risk, fit_temperature
+from .calibrate import (
+    certify_selective_risk,
+    fit_temperature,
+    save_temperature_artifact,
+)
 from .checkpoint import (
     CheckpointError,
     load_completed_checkpoint,
@@ -27,10 +31,11 @@ from .checkpoint import (
 from .data import LOADERS
 from .eval import ece, predict, stress_option_perturbation, stress_permutation
 from .model import HaetaeModel
+from .train import dataset_fingerprint
 
 
 def load_model(ckpt_dir, device):
-    ck, run, _ = load_completed_checkpoint(ckpt_dir)
+    ck, run, manifest = load_completed_checkpoint(ckpt_dir)
     tok = AutoTokenizer.from_pretrained(ckpt_dir)
     if tokenizer_fingerprint(tok) != run["spec"]["tokenizer_fingerprint"]:
         raise CheckpointError("certification tokenizer does not match the run")
@@ -39,9 +44,10 @@ def load_model(ckpt_dir, device):
         raise CheckpointError("certification model configuration does not match the run")
     m.backbone.load_state_dict(ck["backbone"])
     m.head.load_state_dict(ck["head"])
-    return m.to(device).eval(), tok
+    return m.to(device).eval(), tok, ck, run, manifest
 
 
+@torch.no_grad()
 def collect_logits(model, tok, records, device, max_len, batch):
     from .model import collate
 
@@ -57,7 +63,7 @@ def collect_logits(model, tok, records, device, max_len, batch):
             b = collate(tok, recs, max_len)
         lg = model(b["input_ids"].to(device), b["attention_mask"].to(device),
                    b["option_pos"].to(device), b["group_ptr"].to(device))
-        out += [(i + k, l.cpu()) for k, l in zip(keep, lg)]
+        out += [(i + k, l.detach().cpu()) for k, l in zip(keep, lg)]
     return out
 
 
@@ -67,30 +73,66 @@ def main():
     ap.add_argument("--sources", required=True)
     ap.add_argument("--per-source", type=int, default=400)
     ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--max-len", type=int, default=768)
+    ap.add_argument("--max-len", type=int,
+                    help="override the completed run's context limit")
     ap.add_argument("--thresholds", default="0.5,0.7,0.9")
     ap.add_argument("--seed", type=int, default=99)
+    ap.add_argument("--save-calibration-source",
+                    help="write a bound calibration.json from this source")
     args = ap.parse_args()
 
     device = "mps" if torch.backends.mps.is_available() else "cpu"
-    model, tok = load_model(args.ckpt, device)
+    model, tok, checkpoint, run, manifest = load_model(args.ckpt, device)
+    checkpoint_max_len = int(checkpoint["config"]["max_len"])
+    max_len = args.max_len if args.max_len is not None else checkpoint_max_len
+    if max_len <= 0:
+        raise ValueError("max-len must be positive")
+    print(
+        f"checkpoint run={run['run_id']} generation="
+        f"{manifest['current']['generation']} sha256={manifest['current']['sha256']} "
+        f"max_len={max_len}"
+        + (f" (override of {checkpoint_max_len})"
+           if max_len != checkpoint_max_len else "")
+    )
     rng = random.Random(args.seed)
+    calibration_saved = False
 
     for name in args.sources.split(","):
         name = name.strip()
-        rows = list(LOADERS[name](split="test" if name != "anli" else "dev_r1",
-                                limit=args.per_source * 2))
+        split = "test" if name != "anli" else "dev_r1"
+        rows = list(LOADERS[name](split=split, limit=args.per_source * 2))
         rng.shuffle(rows)
         calib, cert = rows[: args.per_source], rows[args.per_source:]
         if not rows:
             continue
 
-        cal_pairs = collect_logits(model, tok, calib, device, args.max_len, args.batch)
+        cal_pairs = collect_logits(model, tok, calib, device, max_len, args.batch)
         cal_logits = [l for _, l in cal_pairs]
         cal_labels = [calib[i]["label"] for i, _ in cal_pairs]
         T = fit_temperature(cal_logits, cal_labels)
+        if name == args.save_calibration_source:
+            if max_len != checkpoint_max_len:
+                raise ValueError(
+                    "calibration export requires the completed run's max_len"
+                )
+            calibration_records = [calib[index] for index, _ in cal_pairs]
+            artifact = save_temperature_artifact(
+                args.ckpt, T, run, manifest,
+                {
+                    "dataset": name,
+                    "split": f"{split}:shuffled-calibration:seed-{args.seed}",
+                    "fingerprint": dataset_fingerprint(calibration_records),
+                    "n": len(calibration_records),
+                },
+                max_len,
+            )
+            calibration_saved = True
+            print(
+                f"calibration -> {args.ckpt}/calibration.json "
+                f"({artifact['checkpoint_sha256']})"
+            )
 
-        cert_probs = predict(model, tok, cert, device, args.max_len,
+        cert_probs = predict(model, tok, cert, device, max_len,
                              args.batch, temperature=T)
         kept = [(r, p) for r, p in zip(cert, cert_probs) if p is not None]
         cert_k = [r for r, _ in kept]
@@ -112,8 +154,12 @@ def main():
                   f"errors {c['errors']}, risk<= {c['risk_upper_bound']:.3f} @95%")
 
     print("\n== stress (on last source's cert split)")
-    stress_permutation(model, tok, cert[:100], device, args.max_len, args.batch)
-    stress_option_perturbation(model, tok, cert[:100], device, args.max_len, args.batch)
+    stress_permutation(model, tok, cert[:100], device, max_len, args.batch)
+    stress_option_perturbation(model, tok, cert[:100], device, max_len, args.batch)
+    if args.save_calibration_source and not calibration_saved:
+        raise ValueError(
+            f"calibration source was not evaluated: {args.save_calibration_source}"
+        )
 
 
 if __name__ == "__main__":

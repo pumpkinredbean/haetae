@@ -133,12 +133,14 @@ def train(args):
     random.seed(args.seed)
     device = "mps" if torch.backends.mps.is_available() else "cpu"
 
-    tok = AutoTokenizer.from_pretrained(args.backbone)
+    tokenizer_source = args.out if args.resume == "auto" else args.backbone
+    tok = AutoTokenizer.from_pretrained(tokenizer_source)
     model = HaetaeModel(args.backbone).to(device)
 
     train, val = [], []
     for name in args.sources.split(","):
         name = name.strip()
+        train_before, val_before = len(train), len(val)
         rows = list(LOADERS[name](split="train", limit=args.per_source + args.eval_per_source))
         # Split by parent state, not by emitted question: expanded
         # records (e.g. helpsteer2's five scores per prompt) must not
@@ -154,8 +156,12 @@ def train(args):
             val += parents[k]
         for k in keys[n_val_parents:]:
             train += parents[k]
-        print(f"{name}: {len(rows) - min(len(rows), args.eval_per_source)} train / "
-              f"{min(len(rows), args.eval_per_source)} val")
+        print(
+            f"{name}: {len(train) - train_before} train questions / "
+            f"{len(val) - val_before} validation questions; "
+            f"{len(keys) - n_val_parents} train parents / "
+            f"{n_val_parents} validation parents"
+        )
     train_fingerprint = dataset_fingerprint(train)
     validation_fingerprint = dataset_fingerprint(val)
 
@@ -209,7 +215,8 @@ def train(args):
             f"resumed {role} generation {store.active_descriptor['generation']} "
             f"at step {step}", flush=True
         )
-    tok.save_pretrained(args.out)
+    if args.resume == "none":
+        tok.save_pretrained(args.out)
 
     fresh_run = data_state is None
     if fresh_run:
@@ -275,6 +282,9 @@ def train(args):
         full_epoch_observed = cursor == 0
         updates_in_epoch = 0
         while step < args.steps:
+            if stop_requested:
+                publish_interrupted()
+                return
             if cursor >= len(order):
                 if full_epoch_observed and updates_in_epoch == 0:
                     publish("failed_no_progress")
@@ -290,9 +300,6 @@ def train(args):
                 current_data_state = {
                     "epoch": epoch, "order": order, "cursor": cursor,
                 }
-            if stop_requested:
-                publish_interrupted()
-                return
             batch_indices = order[cursor:cursor + args.batch]
             cursor += len(batch_indices)
             recs = [permute_choice(train[i], random) for i in batch_indices]

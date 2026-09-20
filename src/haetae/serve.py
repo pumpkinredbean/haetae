@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import json
+import math
+import numbers
 import os
 import torch
 from fastapi import FastAPI, HTTPException
@@ -15,9 +18,18 @@ from .checkpoint import (
     model_config_fingerprint,
     tokenizer_fingerprint,
 )
-from .model import HaetaeModel, collate, confidence_from_probs
+from .model import PACKING_POLICY, HaetaeModel, collate, confidence_from_probs
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app):
+    checkpoint = os.environ.get("HAETAE_CHECKPOINT")
+    if checkpoint:
+        load(checkpoint)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 _model = _tok = None
 _device = "mps" if torch.backends.mps.is_available() else "cpu"
 _temperature = 1.0
@@ -39,29 +51,78 @@ class Req(BaseModel):
 
 def load(checkpoint="runs/v1"):
     global _model, _tok, _temperature, _max_len, _calibrated
-    ck, run, _ = load_completed_checkpoint(checkpoint)
-    _tok = AutoTokenizer.from_pretrained(checkpoint)
-    if tokenizer_fingerprint(_tok) != run["spec"]["tokenizer_fingerprint"]:
+    ck, run, manifest = load_completed_checkpoint(checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+    if tokenizer_fingerprint(tokenizer) != run["spec"]["tokenizer_fingerprint"]:
         raise CheckpointError("serving tokenizer does not match the completed run")
-    _model = HaetaeModel(ck["config"]["backbone"])
-    if model_config_fingerprint(_model) != run["spec"]["model_config_fingerprint"]:
+    model = HaetaeModel(ck["config"]["backbone"])
+    if model_config_fingerprint(model) != run["spec"]["model_config_fingerprint"]:
         raise CheckpointError("serving model configuration does not match the run")
-    _model.backbone.load_state_dict(ck["backbone"])
-    _model.head.load_state_dict(ck["head"])
-    _model.to(_device).eval()
-    _max_len = int(ck["config"].get("max_len", 8192))
+    model.backbone.load_state_dict(ck["backbone"])
+    model.head.load_state_dict(ck["head"])
+    model.to(_device).eval()
+    temperature, calibrated = _load_calibration(checkpoint, run, manifest)
+
+    _tok = tokenizer
+    _model = model
+    _max_len = int(ck["config"]["max_len"])
+    _temperature = temperature
+    _calibrated = calibrated
+
+
+def _load_calibration(checkpoint, run, manifest):
     calibration_path = os.path.join(checkpoint, "calibration.json")
-    if os.path.exists(calibration_path):
-        with open(calibration_path, encoding="utf-8") as f:
-            calibration = json.load(f)
-        temperature = float(calibration["temperature"])
-        if not temperature > 0:
-            raise ValueError("calibration temperature must be positive")
-        _temperature = temperature
-        _calibrated = True
-    else:
-        _temperature = 1.0
-        _calibrated = False
+    if not os.path.exists(calibration_path):
+        return 1.0, False
+    with open(calibration_path, encoding="utf-8") as handle:
+        calibration = json.load(handle)
+    required = {
+        "version", "run_id", "checkpoint_generation", "checkpoint_sha256",
+        "tokenizer_fingerprint", "inference_policy", "calibration_data",
+        "temperature",
+    }
+    if not isinstance(calibration, dict) or required - set(calibration):
+        raise CheckpointError("calibration artifact is incomplete")
+    current = manifest["current"]
+    if calibration["version"] != 1:
+        raise CheckpointError("calibration artifact version is unsupported")
+    if calibration["run_id"] != run["run_id"]:
+        raise CheckpointError("calibration artifact belongs to another run")
+    if calibration["checkpoint_generation"] != current["generation"]:
+        raise CheckpointError("calibration artifact generation mismatch")
+    if calibration["checkpoint_sha256"] != current["sha256"]:
+        raise CheckpointError("calibration artifact checkpoint digest mismatch")
+    if calibration["tokenizer_fingerprint"] != run["spec"]["tokenizer_fingerprint"]:
+        raise CheckpointError("calibration artifact tokenizer mismatch")
+    expected_policy = {
+        "packing": PACKING_POLICY,
+        "max_len": run["spec"]["config"]["max_len"],
+        "temperature_scaling": "scalar-v1",
+    }
+    if calibration["inference_policy"] != expected_policy:
+        raise CheckpointError("calibration artifact inference policy mismatch")
+    calibration_data = calibration["calibration_data"]
+    if (not isinstance(calibration_data, dict)
+            or not isinstance(calibration_data.get("dataset"), str)
+            or not calibration_data["dataset"]
+            or not isinstance(calibration_data.get("split"), str)
+            or not calibration_data["split"]
+            or not isinstance(calibration_data.get("fingerprint"), str)
+            or len(calibration_data["fingerprint"]) != 64
+            or any(character not in "0123456789abcdef"
+                   for character in calibration_data["fingerprint"])
+            or isinstance(calibration_data.get("n"), bool)
+            or not isinstance(calibration_data.get("n"), int)
+            or calibration_data["n"] <= 0):
+        raise CheckpointError("calibration data identity is invalid")
+    raw_temperature = calibration["temperature"]
+    if (isinstance(raw_temperature, bool)
+            or not isinstance(raw_temperature, numbers.Real)):
+        raise CheckpointError("calibration temperature is not numeric")
+    temperature = float(raw_temperature)
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise CheckpointError("calibration temperature must be finite and positive")
+    return temperature, True
 
 
 def _options(q: Question):
@@ -78,7 +139,10 @@ def _options(q: Question):
 
 @app.post("/v1/systemone")
 def systemone(req: Req):
-    state = req.state if isinstance(req.state, str) else str(req.state)
+    if _model is None or _tok is None:
+        raise HTTPException(503, "model is not loaded; set HAETAE_CHECKPOINT")
+    state = (req.state if isinstance(req.state, str)
+             else json.dumps(req.state, ensure_ascii=False, sort_keys=True))
     if not req.questions:
         raise HTTPException(422, "empty questions")
     nouls, choices, scores = {}, {}, {}

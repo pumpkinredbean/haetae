@@ -11,6 +11,7 @@ import math
 import os
 import platform
 import random
+import re
 import tempfile
 import time
 import uuid
@@ -29,6 +30,7 @@ TRAINING_CONFIG_FIELDS = (
     "batch", "lr", "head_lr", "brier_w", "max_len", "seed",
 )
 RUN_STATUSES = {"running", "interrupted", "completed", "failed_no_progress"}
+UNKNOWN_PRODUCER = hashlib.sha256(b"unknown producer").hexdigest()
 
 
 class CheckpointError(RuntimeError):
@@ -47,6 +49,11 @@ def _canonical_bytes(value) -> bytes:
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _is_sha256(value) -> bool:
+    return (isinstance(value, str) and len(value) == 64
+            and re.fullmatch(r"[0-9a-f]{64}", value) is not None)
 
 
 def file_sha256(path: Path) -> str:
@@ -185,10 +192,18 @@ def optimizer_signature(model, optimizer) -> list[dict]:
 
 
 def tokenizer_fingerprint(tokenizer) -> str:
+    backend = getattr(tokenizer, "backend_tokenizer", None)
+    if backend is not None and hasattr(backend, "to_str"):
+        tokenization_definition = json.loads(backend.to_str())
+    else:
+        tokenization_definition = {"vocab": tokenizer.get_vocab()}
     payload = {
         "class": tokenizer.__class__.__name__,
-        "vocab": tokenizer.get_vocab(),
+        "tokenization_definition": tokenization_definition,
         "special_tokens_map": tokenizer.special_tokens_map,
+        "model_max_length": getattr(tokenizer, "model_max_length", None),
+        "padding_side": getattr(tokenizer, "padding_side", None),
+        "truncation_side": getattr(tokenizer, "truncation_side", None),
     }
     return _sha256_bytes(_canonical_bytes(payload))
 
@@ -247,13 +262,9 @@ class CheckpointStore:
         return self.output / "latest.json"
 
     def start(self, spec: dict, producer: dict | None = None) -> dict:
-        existing = [
-            path for path in (
-                self.run_path, self.manifest_path, self.output / "progress.json",
-                self.output / "model.pt", self.output / "checkpoint.pt",
-            ) if path.exists()
-        ]
-        existing += list(self.output.glob("checkpoint-g*.pt"))
+        self.output.mkdir(parents=True, exist_ok=True)
+        existing = [path for path in self.output.iterdir()
+                    if path.name != ".train.lock"]
         if existing:
             names = sorted(path.name for path in existing)
             raise CheckpointError(
@@ -266,7 +277,7 @@ class CheckpointStore:
             "created_at_unix": time.time(),
             "spec": spec,
             "spec_sha256": spec_sha256,
-            "producer": producer or {"sha256": "unknown", "files": []},
+            "producer": producer or {"sha256": UNKNOWN_PRODUCER, "files": []},
         }
         atomic_json_save(self.run, self.run_path)
         return self.run
@@ -313,11 +324,31 @@ class CheckpointStore:
         }
         if not isinstance(descriptor, dict) or required - set(descriptor):
             raise CheckpointError("checkpoint descriptor is incomplete")
-        if descriptor["checkpoint_version"] != CHECKPOINT_VERSION:
+        if (not _is_plain_int(descriptor["generation"])
+                or descriptor["generation"] <= 0):
+            raise CheckpointError("checkpoint descriptor generation is invalid")
+        if not _is_plain_int(descriptor["size"]) or descriptor["size"] < 0:
+            raise CheckpointError("checkpoint descriptor size is invalid")
+        if not _is_plain_int(descriptor["step"]) or descriptor["step"] < 0:
+            raise CheckpointError("checkpoint descriptor step is invalid")
+        if descriptor["status"] not in RUN_STATUSES:
+            raise CheckpointError("checkpoint descriptor status is invalid")
+        if (not _is_plain_int(descriptor["checkpoint_version"])
+                or descriptor["checkpoint_version"] != CHECKPOINT_VERSION):
             raise CheckpointError("checkpoint descriptor version mismatch")
         filename = descriptor["path"]
-        if Path(filename).name != filename or not filename.startswith("checkpoint-g"):
+        match = (re.fullmatch(
+            r"checkpoint-g([0-9]{8})-s([0-9]{9})-([0-9a-f]{8})\.pt",
+            filename,
+        ) if isinstance(filename, str) else None)
+        if (match is None or Path(filename).name != filename
+                or int(match.group(1)) != descriptor["generation"]
+                or int(match.group(2)) != descriptor["step"]):
             raise CheckpointError("unsafe checkpoint descriptor path")
+        if not _is_sha256(descriptor["sha256"]):
+            raise CheckpointError("checkpoint descriptor digest is invalid")
+        if not _is_sha256(descriptor["producer_sha256"]):
+            raise CheckpointError("checkpoint producer digest is invalid")
         path = self.output / filename
         try:
             handle = path.open("rb")
@@ -339,6 +370,8 @@ class CheckpointStore:
                 )
             handle.seek(0)
             payload = torch.load(handle, map_location="cpu", weights_only=False)
+        if not isinstance(payload, dict):
+            raise CheckpointError("checkpoint payload is not a mapping")
         if payload.get("version") != CHECKPOINT_VERSION:
             raise CheckpointError("checkpoint payload version mismatch")
         if payload.get("run_id") != self.run["run_id"]:
@@ -394,29 +427,37 @@ class CheckpointStore:
             "reason": failures[-1],
         })
         atomic_json_save(events, path)
-        atomic_json_save({
-            "run_id": self.run["run_id"],
-            "status": payload["status"],
-            "step": payload["step"],
-            "steps": self.run["spec"]["config"]["steps"],
-            "skipped": payload["skipped"],
-            "epoch": payload["data_state"]["epoch"],
-            "cursor": payload["data_state"]["cursor"],
-            "generation": selected["generation"],
-            "checkpoint": selected["path"],
-            "sha256": selected["sha256"],
-            "recovered_from_generation": rejected.get("generation"),
-            "recovery_reason": failures[-1],
-            "updated_at_unix": time.time(),
-        }, self.output / "progress.json")
+        try:
+            atomic_json_save({
+                "run_id": self.run["run_id"],
+                "status": payload["status"],
+                "step": payload["step"],
+                "steps": self.run["spec"]["config"]["steps"],
+                "skipped": payload["skipped"],
+                "epoch": payload["data_state"]["epoch"],
+                "cursor": payload["data_state"]["cursor"],
+                "generation": selected["generation"],
+                "checkpoint": selected["path"],
+                "sha256": selected["sha256"],
+                "recovered_from_generation": rejected.get("generation"),
+                "recovery_reason": failures[-1],
+                "updated_at_unix": time.time(),
+            }, self.output / "progress.json")
+        except OSError as exc:
+            warnings.warn(
+                f"recovery succeeded but progress display update failed: {exc}",
+                RuntimeWarning,
+            )
 
-    def publish(self, payload: dict, status: str, validator=None) -> dict:
+    def publish(self, payload: dict, status: str, validator) -> dict:
         if self.run is None:
             raise CheckpointError("run store is not initialized")
         if status not in RUN_STATUSES:
             raise CheckpointError(f"invalid run status: {status}")
         if payload.get("run_id") != self.run["run_id"]:
             raise CheckpointError("refusing to publish a foreign run")
+        if not callable(validator):
+            raise CheckpointError("checkpoint publication requires a validator")
         old_manifest = self._read_manifest() if self.manifest_path.exists() else None
         if old_manifest is not None and self.active_descriptor is None:
             raise CheckpointError(
@@ -459,8 +500,7 @@ class CheckpointStore:
             "producer_sha256": payload["producer"]["sha256"],
         }
         serialized_payload = self._load_descriptor(descriptor)
-        if validator is not None:
-            validator(serialized_payload)
+        validator(serialized_payload)
         manifest = {
             "version": MANIFEST_VERSION,
             "run_id": self.run["run_id"],
@@ -532,6 +572,37 @@ def _validate_model_state(saved: dict, current: dict, label: str) -> None:
         _require_finite_tensor(value, f"{label}.{name}")
 
 
+def _validate_rng_state(rng: dict, device: str) -> None:
+    if not isinstance(rng, dict) or "python" not in rng or "torch" not in rng:
+        raise CheckpointError("checkpoint RNG state is incomplete")
+    try:
+        random.Random().setstate(rng["python"])
+    except (TypeError, ValueError) as exc:
+        raise CheckpointError("checkpoint Python RNG state is invalid") from exc
+    cpu_state = rng["torch"]
+    if (not torch.is_tensor(cpu_state) or cpu_state.device.type != "cpu"
+            or cpu_state.dtype != torch.uint8 or cpu_state.ndim != 1):
+        raise CheckpointError("checkpoint Torch RNG state is malformed")
+    try:
+        torch.Generator(device="cpu").set_state(cpu_state)
+    except RuntimeError as exc:
+        raise CheckpointError("checkpoint Torch RNG state is invalid") from exc
+    if device == "mps":
+        mps_state = rng.get("mps")
+        original = torch.mps.get_rng_state()
+        if (not torch.is_tensor(mps_state)
+                or mps_state.device.type != "cpu"
+                or mps_state.dtype != original.dtype
+                or mps_state.shape != original.shape):
+            raise CheckpointError("checkpoint MPS RNG state is malformed")
+        try:
+            torch.mps.set_rng_state(mps_state)
+        except RuntimeError as exc:
+            raise CheckpointError("checkpoint MPS RNG state is invalid") from exc
+        finally:
+            torch.mps.set_rng_state(original)
+
+
 def _validate_optimizer_state(saved: dict, optimizer, scheduler, step: int) -> None:
     current = optimizer.state_dict()
     saved_groups = saved.get("param_groups")
@@ -588,7 +659,8 @@ def _validate_optimizer_state(saved: dict, optimizer, scheduler, step: int) -> N
             elif "max_exp_avg_sq" in state:
                 raise CheckpointError("unexpected optimizer AMSGrad state")
             counter = state["step"]
-            if not torch.is_tensor(counter) or counter.numel() != 1:
+            if (not torch.is_tensor(counter) or counter.shape != torch.Size([])
+                    or not counter.is_floating_point()):
                 raise CheckpointError("optimizer step counter is malformed")
             _require_finite_tensor(counter, "optimizer.step")
             if float(counter.item()) != float(step):
@@ -634,15 +706,27 @@ def validate_checkpoint(payload: dict, run: dict, args, model, optimizer,
     _validate_model_state(payload["head"], model.head.state_dict(), "head")
     _validate_optimizer_state(payload["optimizer"], optimizer, scheduler, step)
     scheduler_state = payload["scheduler"]
+    expected_scheduler = scheduler.state_dict()
+    if (not isinstance(scheduler_state, dict)
+            or set(scheduler_state) != set(expected_scheduler)):
+        raise CheckpointError("scheduler state structure mismatch")
     if scheduler_state.get("last_epoch") != step:
         raise CheckpointError("scheduler step mismatch")
     if scheduler_state.get("_step_count") != step + 1:
         raise CheckpointError("scheduler update count mismatch")
-    if scheduler_state.get("base_lrs") != scheduler.state_dict().get("base_lrs"):
+    if scheduler_state.get("base_lrs") != expected_scheduler.get("base_lrs"):
         raise CheckpointError("scheduler base learning rates mismatch")
+    if scheduler_state.get("lr_lambdas") != expected_scheduler.get("lr_lambdas"):
+        raise CheckpointError("scheduler function state mismatch")
+    for key in ("_is_initial", "_get_lr_called_within_step"):
+        if scheduler_state.get(key) != expected_scheduler.get(key):
+            raise CheckpointError(f"scheduler setting mismatch: {key}")
     saved_lrs = scheduler_state.get("_last_lr")
     optimizer_lrs = [group["lr"] for group in payload["optimizer"]["param_groups"]]
-    if saved_lrs != optimizer_lrs:
+    if (not isinstance(saved_lrs, list)
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(float(value)) for value in saved_lrs)
+            or saved_lrs != optimizer_lrs):
         raise CheckpointError("scheduler and optimizer learning rates differ")
     data_state = payload["data_state"]
     if not isinstance(data_state, dict):
@@ -657,13 +741,9 @@ def validate_checkpoint(payload: dict, run: dict, args, model, optimizer,
     cursor = data_state.get("cursor")
     if not _is_plain_int(cursor) or not 0 <= cursor <= train_size:
         raise CheckpointError("checkpoint data cursor is invalid")
-    rng = payload["rng"]
-    if "python" not in rng or not torch.is_tensor(rng.get("torch")):
-        raise CheckpointError("checkpoint RNG state is incomplete")
     if run["spec"]["backend"] != device:
         raise CheckpointError("checkpoint backend mismatch")
-    if device == "mps" and "mps" not in rng:
-        raise CheckpointError("checkpoint has no MPS RNG state")
+    _validate_rng_state(payload["rng"], device)
 
 
 def checkpoint_payload(run: dict, args, model, optimizer, scheduler, step: int,
@@ -677,7 +757,7 @@ def checkpoint_payload(run: dict, args, model, optimizer, scheduler, step: int,
         "run_id": run["run_id"],
         "spec_sha256": run["spec_sha256"],
         "producer": producer or run.get("producer", {
-            "sha256": "unknown", "files": [],
+            "sha256": UNKNOWN_PRODUCER, "files": [],
         }),
         "status": status,
         "head": model.head.state_dict(),
@@ -730,8 +810,13 @@ def load_completed_checkpoint(output: str | Path) -> tuple[dict, dict, dict]:
     payload = store._load_descriptor(manifest["current"])
     if payload.get("status") != "completed":
         raise CheckpointError("completed manifest points to a noncompleted checkpoint")
-    target = payload.get("config", {}).get("steps")
-    if payload.get("step") != target:
+    run_config = store.run.get("spec", {}).get("config")
+    if not isinstance(run_config, dict) or payload.get("config") != run_config:
+        raise CheckpointError("completed checkpoint configuration differs from its run")
+    target = run_config.get("steps")
+    if (not _is_plain_int(target) or target < 0
+            or not _is_plain_int(payload.get("step"))
+            or payload["step"] != target):
         raise CheckpointError("completed checkpoint has not reached its target")
     for label in ("backbone", "head"):
         state = payload.get(label)

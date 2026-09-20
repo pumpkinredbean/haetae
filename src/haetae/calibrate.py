@@ -8,7 +8,9 @@ than empirical calibration, and one Jev does not make.
 
 from __future__ import annotations
 
+import math
 import numbers
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 
@@ -44,7 +46,37 @@ def fit_temperature(logits_list, labels):
         return loss
 
     opt.step(closure)
-    return float(log_T.detach().exp())
+    temperature = float(log_T.detach().exp())
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise RuntimeError("temperature optimization produced an invalid value")
+    return temperature
+
+
+def save_temperature_artifact(output, temperature, run, manifest,
+                              calibration_data, max_len):
+    """Bind a scalar temperature to one completed generation and dataset."""
+    from .checkpoint import atomic_json_save
+    from .model import PACKING_POLICY
+
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be finite and positive")
+    current = manifest["current"]
+    artifact = {
+        "version": 1,
+        "run_id": run["run_id"],
+        "checkpoint_generation": current["generation"],
+        "checkpoint_sha256": current["sha256"],
+        "tokenizer_fingerprint": run["spec"]["tokenizer_fingerprint"],
+        "inference_policy": {
+            "packing": PACKING_POLICY,
+            "max_len": max_len,
+            "temperature_scaling": "scalar-v1",
+        },
+        "calibration_data": calibration_data,
+        "temperature": float(temperature),
+    }
+    atomic_json_save(artifact, Path(output) / "calibration.json")
+    return artifact
 
 
 def conformal_threshold(probs_list, labels, alpha=0.1):

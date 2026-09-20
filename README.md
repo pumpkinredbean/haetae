@@ -73,4 +73,12 @@ certification accept only a manifest whose status is `completed`.
 
 ## Serve
 
-    uv run uvicorn haetae.serve:app   # then POST /v1/systemone
+    HAETAE_CHECKPOINT=runs/baseline uv run uvicorn haetae.serve:app
+
+The server accepts only a completed generation. Without a calibration
+artifact it reports `calibrated: false`. A `calibration.json` must be
+bound to the same run ID, checkpoint generation and SHA-256, tokenizer,
+inference policy, and named calibration data. The certification command
+can create that artifact for one evaluated source:
+
+    uv run python -m haetae.certify --ckpt runs/baseline --sources sst5 --save-calibration-source sst5

@@ -17,7 +17,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Aside URL: https://chatgpt.com/c/6aaeba00-b670-83e8-9c29-3370b3c7945d
 - Review model: ChatGPT 6 Pro
 - Interaction method: Aside REPL only
-- Latest review: the format 3 direction and single-manifest protocol were accepted; supported findings below are implemented. The next request must review the exact new commit.
+- Exact review of commit `a30ba8b`: publication, rotation, AdamW checks, real signal continuation, and epoch rollover passed. Reported semantic-validation, tokenizer-identity, calibration-binding, descriptor-schema, completed-target, recovery-display, and certification-policy findings are fixed in the current working tree.
 
 ## Confirmed model design
 
@@ -48,7 +48,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 The working tree replaces the path-based format 2 checkpoint with an immutable run and generation protocol:
 
 - a nonblocking `fcntl` lock is held for the run directory for the process lifetime;
-- `run.json` binds a UUID to training configuration, exact train and validation fingerprints, backend, optimizer parameter names/order/shapes, tokenizer vocabulary, model configuration, source-code contents, and software versions;
+- `run.json` binds a UUID to training configuration, exact train and validation fingerprints, backend, optimizer parameter names/order/shapes, the complete serialized tokenizer pipeline and wrapper settings, model configuration, training-code contents, and software versions;
 - a fresh run refuses to overwrite an existing run directory, while automatic resume requires the exact run identity;
 - every generation uses a unique temporary file, file `fsync`, macOS `F_FULLFSYNC`, atomic rename, directory `fsync`, byte size, and SHA-256;
 - `latest.json` atomically publishes the current generation and one previously validated generation; `progress.json` is derived display data;
@@ -62,11 +62,11 @@ The working tree replaces the path-based format 2 checkpoint with an immutable r
 
 Validation completed locally:
 
-- twelve focused unit tests pass, including physical corruption fallback, semantic-corruption fail-closed behavior, manifest-publication failure, process lock exclusion, rejected epoch-tail continuation, no-progress failure, calibration boundaries, and exact resume;
+- twenty-six focused unit tests pass, including physical corruption fallback, semantic-corruption fail-closed behavior, malformed descriptor rejection, manifest-publication failure, process lock exclusion, rejected epoch-tail continuation, full RNG/scheduler restoration validation, tokenizer-pipeline identity, bound calibration artifacts, certification graph detachment, no-progress failure, calibration boundaries, and exact resume;
 - the CPU exact-resume test matches record IDs, option permutations, Python and Torch random draws, losses, learning rates, optimizer state, data state, and final parameters against an uninterrupted run;
 - the native MPS test confirms restored moments are on MPS, AdamW scalar steps stay on CPU, and the next update matches the uninterrupted branch exactly;
-- a real ModernBERT completed-run smoke test used run ID `39351c5b-e4c5-4c1c-9b29-c165f6b077c7`; completed generation 5 reached step 8 with SHA-256 `a24b1da63e889edeed1e2b9eef0dd1933a3796bf21c3e2231286863fe6b6cc45` and was accepted by the completed-run loader;
-- a separate real interruption test used run ID `0eda4960-3a20-4f47-a4e7-16797435a231`, saved `interrupted` generation 4 at step 4, resumed that exact generation at step 4, advanced to step 8, and saved `interrupted` generation 7.
+- the post-review real ModernBERT/MPS smoke run used run ID `ae2f88a4-be47-4190-9680-2ce90b87c716`, saved interrupted generation 4 at step 2, loaded the persisted tokenizer and resumed that exact generation, then completed generation 10 at step 8;
+- completed generation 10 has SHA-256 `d56ec0f1bdc6fde37e15a2d89a8e1fe4d0bd860771705bafa50379e5acac5be5` and passed the completed serving loader with `calibrated: false` and the recorded context limit.
 
 The smoke run validates mechanics only. It is not a model-quality result.
 
@@ -74,7 +74,7 @@ The smoke run validates mechanics only. It is not a model-quality result.
 
 - `runs/v1` is a debugging artifact. Its `model.pt` predates a lost long run and is not a valid result.
 - `runs/v2` is checkpoint format 2. It proved exact cursor recovery from step 82 and cursor 656 to step 100 and cursor 800. It was stopped at a valid periodic step-250 checkpoint before format 3 work and will not be migrated into the final baseline.
-- `runs/smoke-v3b` is the completed format 3 mechanics test. `runs/smoke-v3c` is the real SIGTERM and resume test.
+- `runs/smoke-v3d` is the post-review completed SIGTERM and resume test. Earlier mechanics artifacts were removed after their evidence was superseded.
 
 ## State truncation audit
 
@@ -84,8 +84,10 @@ The actual tokenizer and packing policy were audited on 1,700 rows per ordinary 
 - BoolQ truncated 1 of 1,700 states, retaining 82.0% of that state.
 - HelpSteer2 truncated 765 of 8,500 questions, or 9.0%. Mean retained state was 98.0%, but the worst retained state was 34.4%.
 - HelpSteer2 truncation fell to 3.71% at 1,024 tokens, 0.29% at 1,536, and 0.06% at 2,048.
+- A worst-case batch of the eight longest HelpSteer2 questions completed a 1,536-token MPS forward and backward pass in 7.38 seconds, with 2.23 GiB current and 32.30 GiB driver allocation after the optimizer step.
+- The same eight-example batch at 2,048 tokens failed during forward attention at 46.53 GiB allocated, while requesting another 1.50 GiB against the 47.74 GiB MPS limit.
 
-The planned clean baseline uses 1,536 tokens unless the pending review identifies a stronger measured policy. This avoids treating the 768-token format 2 run as final and sharply reduces HelpSteer2 response loss without changing the architecture.
+The planned clean baseline uses 1,536 tokens. This sharply reduces HelpSteer2 response loss while keeping the configured batch size viable; 2,048 tokens is not viable for the measured worst-case batch.
 
 ## Planned long run
 
@@ -111,8 +113,7 @@ tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv 
 
 ## Next actions
 
-1. Send exact commit `a30ba8b` through Aside REPL for code review.
-2. Apply supported code-review findings and repeat affected exact-resume and MPS checks.
-3. Start the fresh 1,536-token `runs/v3` baseline and keep its manifest details in this file.
-4. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
-5. Send the exact final code commit and measured results to 6 Pro, implement supported findings, and rerun affected evidence.
+1. Commit and push the exact-review fixes, then request a targeted 6 Pro re-review of the new SHA.
+2. Start the fresh 1,536-token `runs/v3` baseline after the targeted re-review and keep its manifest details in this file.
+3. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
+4. Send the exact final code commit and measured results to 6 Pro, implement supported findings, and rerun affected evidence.

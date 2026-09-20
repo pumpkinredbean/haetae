@@ -22,6 +22,9 @@ import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
 
 
+PACKING_POLICY = "packed-preceding-separator-v1"
+
+
 def pack_question(tokenizer, state, instructions, options, max_len=8192):
     """Tokenize one packed question.
 
