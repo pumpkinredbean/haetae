@@ -19,6 +19,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Review model: ChatGPT 6 Pro
 - Interaction method: Aside REPL only
 - Exact review of commit `a30ba8b`: publication, rotation, AdamW checks, real signal continuation, and epoch rollover passed. Reported semantic-validation, tokenizer-identity, calibration-binding, descriptor-schema, completed-target, recovery-display, and certification-policy findings are fixed in the current working tree.
+- Targeted re-review of exact commit `06b8728`: ChatGPT 6 Pro inspected the complete commit and ran additional malformed-RNG, scheduler, AdamW-counter, tokenizer-identity, exact-resume, stale-directory, descriptor, and completed-target probes. It reported 27 passes and one expected MPS skip in its CPU environment, closed both pre-run blockers, and explicitly approved starting the unattended 1,536-token run.
 
 ## Confirmed model design
 
@@ -90,9 +91,9 @@ The actual tokenizer and packing policy were audited on 1,700 rows per ordinary 
 
 The planned clean baseline uses 1,536 tokens. This sharply reduces HelpSteer2 response loss while keeping the configured batch size viable; 2,048 tokens is not viable for the measured worst-case batch.
 
-## Planned long run
+## Active long run
 
-No long training process is active while checkpoint format 3 is under review. After the reviewed code is pushed, start a fresh run:
+The reviewed baseline started from a fresh directory at 2026-09-20 14:15:56 KST. It uses MPS and the exact command below:
 
 ```bash
 cd /Users/minkyu/workspace/haetae
@@ -111,10 +112,18 @@ tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv 
 - authoritative run identity: `/Users/minkyu/workspace/haetae/runs/v3/run.json`
 - authoritative generation manifest: `/Users/minkyu/workspace/haetae/runs/v3/latest.json`
 - derived progress: `/Users/minkyu/workspace/haetae/runs/v3/progress.json`
+- run ID: `05006c2d-ae6b-4821-8c6c-d4ab27b43bfc`
+- run-spec SHA-256: `60c551c578de6446ae60113009403bb5091b0391ee549bcd9fc50d289123014f`
+- training-data SHA-256: `372dfb7edbe90dbf61be1ab8171a8833f74eba616b39103ecee9896e184be5c1`
+- validation-data SHA-256: `c95c9c32397584182f1e75ca6accfbbe256b4cee2b2c1698fe0d15242b78758b`
+- tokenizer SHA-256: `e18014b047f21133e8cc5029313c14f5d90beee97eb19f307d5f37af8631178e`
+- model-configuration SHA-256: `d3e57da889eaf2bdf87744ea4c663159a36f37f46c182c418dbfbd1051c38aec`
+- actual data: 25,500 training questions from 18,750 parents and 3,400 validation questions from 2,500 parents;
+- first durable training generation: generation 2, step 50, SHA-256 `122d823b442ac0a2864be6472bce700d1f743eb003fb7ca9ee8a3b6d74493953`;
+- step 50 loss: 1.3141, with zero rejected batches and 2.17 seconds per step including initialization and checkpoint publication.
 
 ## Next actions
 
-1. Request a targeted 6 Pro re-review of exact commit `06b8728`.
-2. Start the fresh 1,536-token `runs/v3` baseline after the targeted re-review and keep its manifest details in this file.
-3. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
-4. Send the exact final code commit and measured results to 6 Pro, implement supported findings, and rerun affected evidence.
+1. Monitor each durable generation and resume only from the authoritative manifest if the process stops.
+2. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
+3. Send the exact final code commit and measured results to ChatGPT 6 Pro through the same Aside REPL conversation, implement supported findings, and rerun affected evidence.
