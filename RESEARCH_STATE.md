@@ -12,6 +12,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 
 - Repository: https://github.com/pumpkinredbean/haetae
 - Branch: `main`
+- Accepted execution-benchmark code commit: `73d2b49c3d95267b135adbcb3af5f53ede3426d3`
 - Checkpoint format 3 implementation commit: `a30ba8b`
 - Exact-review fix commit: `06b8728`
 - Aside conversation: `Clean Room Jev Reproduction`
@@ -353,9 +354,23 @@ The review's false-pass example now reports the correct P/B ratio `1.028` instea
 
 A second pre-measurement review confirmed those timing, memory, journal-binding, and counterbalancing corrections, then reproduced one remaining evidence-integrity defect: a resumed equivalence transaction could retain logits that contradicted its recorded probabilities, and summary validation did not require the frozen candidate count. The runner now stores authoritative reference and candidate logits for every comparison, derives every probability, log-probability error, action, margin, and difference from those logits during both recovery and summary, binds base candidates to the recorded packed logits, requires the frozen candidate count, and verifies a digest on every completed request transaction. Regression tests cover the resumed contradictory-logit case, candidate-count substitution, and probability underflow. All 107 repository tests pass offline.
 
+ChatGPT 6 Pro reviewed exact commit `73d2b49c3d95267b135adbcb3af5f53ede3426d3` and returned `EXECUTION BENCHMARK START` after 61 controlled probes. It exercised actual journal recovery, resume, final summary, recomputed-digest corruption, candidate-count substitution, ordinary and subnormal logits, every stress category, and an independent scalar log-sum-exp reference. It reported no remaining material pre-measurement blocker and opened no locked test.
+
+The actual benchmark directory is freshly frozen at `evaluations/shared-execution-v1`. Protocol SHA-256 is `c2da2300f2799c4a919e365f741c8dd21c170182ed0d69d1c3599cd553dca654`, workload SHA-256 is `13acd9555efb792ac74d7ab673407275001cce0c337be15cdf8abc7fa8d00622`, and schedule SHA-256 is `f3151b7233205145fa889c8c8c6aff28fb6e4b01ca6e36ab5662059e9cb54025`. It contains 3,963 public-development requests and 7,227 questions, with 256 multi-question parents, 64 single-question controls, 96 diagnostics, and `locked_test_opened: false`.
+
+The resumable execution script is `evaluations/shared-execution-v1/run.zsh`. It runs MPS then CPU equivalence, three fresh-process timing repetitions per device, P/B/S memory passes per device, and final summary. Completed stages are skipped by their bound metadata files; an interrupted equivalence stage resumes from its validated journal.
+
+Launch and resume command:
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-shared-execution-v1 "zsh -lc 'set -o pipefail; /Users/minkyu/workspace/haetae/evaluations/shared-execution-v1/run.zsh 2>&1 | tee -a /Users/minkyu/workspace/haetae/shared_execution_v1.log'"
+```
+
+Session: `haetae-shared-execution-v1`; log: `shared_execution_v1.log`; stage artifacts: `evaluations/shared-execution-v1/*.meta.json`; final report: `evaluations/shared-execution-v1/summary.json`. The latest completed stage is the protocol freeze; no measured result exists yet.
+
 Next actions:
 
-1. Commit and push the corrected runner, protocol, tests, and research state.
-2. Ask ChatGPT 6 Pro to review that exact commit and reproduce the previous counterexamples.
-3. Only after acceptance, refreeze `evaluations/shared-execution-v1` and run equivalence, timing, memory, and summary on public development data.
-4. Use the result to choose between execution optimization and a scoped specialist with an explicit out-of-distribution deferral gate.
+1. Run the frozen equivalence, timing, memory, and summary stages without changing weights or temperature.
+2. Validate the final report and send its exact artifacts to ChatGPT 6 Pro for result review.
+3. Use the accepted result to choose between execution optimization and a scoped specialist with an explicit out-of-distribution deferral gate.
