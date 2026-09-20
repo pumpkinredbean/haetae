@@ -367,7 +367,9 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-shared-execution-v1 "zsh -lc 'set -o pipefail; /Users/minkyu/workspace/haetae/evaluations/shared-execution-v1/run.zsh 2>&1 | tee -a /Users/minkyu/workspace/haetae/shared_execution_v1.log'"
 ```
 
-Session: `haetae-shared-execution-v1`; log: `shared_execution_v1.log`; stage artifacts: `evaluations/shared-execution-v1/*.meta.json`; final report: `evaluations/shared-execution-v1/summary.json`. The latest completed stage is the protocol freeze; no measured result exists yet.
+Session: `haetae-shared-execution-v1`; log: `shared_execution_v1.log`; stage artifacts: `evaluations/shared-execution-v1/*.meta.json`; final report: `evaluations/shared-execution-v1/summary.json`.
+
+The MPS equivalence stage completed 3,963 requests and 22,537 bound records. Independent validation accepted all 14 same-device groups. Maximum total variation is `8.97131840676968e-06`, maximum absolute log-probability difference is `4.1134871864301203e-05`, and both material and near-tie action changes are zero. Artifact SHA-256 is `d5a70bdd414cbf16700115708d726f73509c7b8e40c33e0b0b6550bd032c6162`. CPU equivalence is the active stage; timing and memory have not started.
 
 Next actions:
 
