@@ -208,7 +208,7 @@ tmux new-session -d -s haetae-v3m4-fit "zsh -lc 'set -o pipefail; PYTORCH_MPS_LO
 - calibration artifact SHA-256: `e3e2edce6d18024e4de2f8a2e5a32602225a2a4f030874572ead54a4556cb816`
 - independent validation recomputed the policy and file digests, checked all logits and checkpoint bindings, and confirmed that no C prediction, stress, latency, or metric output existed.
 
-The explicitly gated role C evaluation is scheduled from 2026-09-20 17:46 KST. Its prediction, stress, and latency stages publish separate digest-bound artifacts so a terminated process can resume without recomputing completed stages.
+The explicitly gated role C evaluation ran from 2026-09-20 17:46 KST to 18:09 KST. Its prediction, stress, and latency stages published separate digest-bound artifacts before the final report.
 
 ```bash
 cd /Users/minkyu/workspace/haetae
@@ -217,6 +217,14 @@ tmux new-session -d -s haetae-v3m4-eval "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 
 - tmux session: `haetae-v3m4-eval`
 - log: `/Users/minkyu/workspace/haetae/measure_v3_micro4_eval.log`
+- role C predictions: 15,995 accepted of 15,995, SHA-256 `53d925946ad65535233a7409581a347d559d5495ad17c44b2cda30bf11943d8b`, snapshot SHA-256 `e7f44c6e1496d544a0df137a3f7daff0523994002d9e9aa4d44a446ab685cfa3`;
+- choice-stress artifact SHA-256: `f00898f3e63b58f1f2fddd8d7dffc01208cafc8910a6576a5b690f341bf01abc`;
+- latency artifact SHA-256: `a143f44be3f19877fba0b004bffadbf655506e7182b94dfe82631e0621d5fcc6`;
+- final metrics SHA-256: `eec509745ba2877cc5c66b55d7972f91af28fb68b8117a0064656c2a09f3406a`, file SHA-256 `c11cad1d0ad4beaa166df7e31d326397be695408d5b348e4e39dd58cc9d980e3`.
+
+The frozen C result has overall accuracy `0.4903` with parent-bootstrap 95% interval `[0.4809, 0.4998]` and source-macro accuracy `0.5319`. Temperature scaling leaves accuracy unchanged, lowers NLL from `1.1935` to `1.1459`, and lowers histogram and annotation Brier scores by `0.00438`; all three paired parent-bootstrap intervals favor scaling. Source accuracies range from KLUE-YNAT `0.2387` and NSMC `0.4887` to AG News `0.8363` and Civil Toxicity `0.9217`.
+
+Choice permutation preserves the semantic top action in `65.24%` of 20,460 variants with mean total-variation distance `0.0716`; controlled option removal preserves it in `89.24%` of 6,820 variants with mean total variation `0.0260`. The 90% conformal sets have observed per-cell coverage from `0.8588` to `0.9463`, often by returning large sets. None of the 54 simultaneous selective-risk rules certifies an error upper bound below 10%; the best bound is `0.1127` for Civil Toxicity. On the heterogeneous 64-record MPS workload, batch-one model latency averages `25.84 ms` per record and packing-inclusive latency `26.26 ms`; batch four averages `43.75 ms` and `44.46 ms` per record because dynamic padding includes long and many-option records.
 
 All 70 repository tests pass. A HelpSteer2 mechanics run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News mechanics run exercised raw and scaled permutation, controlled removal, baselines, paired metrics, and latency. These are mechanics smokes, not quality results.
 
@@ -265,7 +273,7 @@ The corrected public-only rendered-state audit preserved the existing frozen sui
 
 ## Next actions
 
-1. Complete and validate the active role C evaluation.
+1. Preserve the validated role C result and use it as the baseline measurement.
 2. Complete the ChatGPT 6 Pro follow-up review of exact commit `0fad931`.
 3. Run a real shared-state MPS memory and exact-resume smoke after the baseline measurement releases the accelerator.
 4. Start the shared-state MPS run only after its review accepts the implementation and the baseline releases the accelerator.
