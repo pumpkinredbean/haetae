@@ -148,6 +148,14 @@ def selected_source_rows(
         raise ValueError("source schedule population counts differ")
     if len({item["workload_id"] for item in selected}) != len(selected):
         raise ValueError("confirmation workload identities are not unique")
+    for population in design["populations"]:
+        parents = [
+            item["parent_id"]
+            for item in selected
+            if item["population"] == population
+        ]
+        if len(set(parents)) != len(parents):
+            raise ValueError("confirmation population repeats a parent")
     for item in selected:
         row = rows_by_id.get(item["workload_id"])
         if row is None or row["parent_id"] != item["parent_id"]:
@@ -356,8 +364,16 @@ def measure(args) -> dict:
     result_path = output / f"process-{args.process_index}.jsonl"
     meta_path = output / f"process-{args.process_index}.meta.json"
     partial_path = result_path.with_suffix(".partial")
-    if result_path.exists() or meta_path.exists():
+    if meta_path.exists():
         raise FileExistsError("refusing to overwrite a confirmation process")
+    if result_path.exists():
+        incomplete = result_path.with_name(
+            f"process-{args.process_index}.incomplete-"
+            f"{file_sha256(result_path)[:12]}.jsonl"
+        )
+        if incomplete.exists():
+            raise FileExistsError("an identical incomplete process is already preserved")
+        os.replace(result_path, incomplete)
     partial_path.unlink(missing_ok=True)
     requests = base.reload_requests(source_protocol, source_rows)
     selected = schedule["processes"][str(args.process_index)]
@@ -561,6 +577,26 @@ def validate_process(
             raise ValueError("confirmation observation is duplicated")
         seen.add(key)
     return rows, metadata
+
+
+def verify_process(args) -> dict:
+    output = Path(args.out).resolve()
+    protocol, schedule, _, _, _, _ = load_frozen(output)
+    if not 0 <= args.process_index < protocol["design"]["fresh_processes"]:
+        raise ValueError("process index is outside the frozen protocol")
+    result_path = output / f"process-{args.process_index}.jsonl"
+    meta_path = output / f"process-{args.process_index}.meta.json"
+    rows, metadata = validate_process(
+        result_path, meta_path, args.process_index, protocol, schedule
+    )
+    return {
+        "status": "validated",
+        "process_index": args.process_index,
+        "records": len(rows),
+        "process_id": metadata["process_id"],
+        "file_sha256": metadata["file_sha256"],
+        "report_sha256": metadata["report_sha256"],
+    }
 
 
 def quantile(values: list[float], probability: float) -> float:
@@ -807,9 +843,14 @@ def summarize(args) -> dict:
     )
     destination = output / "summary.json"
     combined = output / "observations.jsonl"
-    if destination.exists() or combined.exists():
+    if destination.exists():
         raise FileExistsError("refusing to overwrite confirmation summary")
-    base.atomic_write(combined, base.jsonl_bytes(all_rows))
+    combined_bytes = base.jsonl_bytes(all_rows)
+    if combined.exists():
+        if combined.read_bytes() != combined_bytes:
+            raise ValueError("existing combined observations do not reproduce")
+    else:
+        base.atomic_write(combined, combined_bytes)
     artifacts[combined.name] = file_sha256(combined)
     artifacts["protocol.json"] = file_sha256(output / "protocol.json")
     artifacts["schedule.json"] = file_sha256(output / "schedule.json")
@@ -854,6 +895,9 @@ def main() -> None:
     measure_parser = commands.add_parser("measure")
     measure_parser.add_argument("--out", required=True)
     measure_parser.add_argument("--process-index", required=True, type=int)
+    process_verify_parser = commands.add_parser("verify-process")
+    process_verify_parser.add_argument("--out", required=True)
+    process_verify_parser.add_argument("--process-index", required=True, type=int)
     summary_parser = commands.add_parser("summarize")
     summary_parser.add_argument("--out", required=True)
     verify_parser = commands.add_parser("verify")
@@ -863,6 +907,8 @@ def main() -> None:
         result = freeze(args)
     elif args.command == "measure":
         result = measure(args)
+    elif args.command == "verify-process":
+        result = verify_process(args)
     elif args.command == "summarize":
         result = summarize(args)
     else:

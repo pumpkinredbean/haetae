@@ -9,6 +9,7 @@ from experiments.confirm_shared_execution import (
     build_schedule,
     complementary_triplets,
     population_statistics,
+    selected_source_rows,
     validate_process,
     validate_schedule,
 )
@@ -230,6 +231,57 @@ class SharedExecutionConfirmationTests(unittest.TestCase):
             atomic_json(meta_path, metadata)
             with self.assertRaisesRegex(ValueError, "arm differs"):
                 validate_process(result_path, meta_path, 0, protocol, schedule)
+
+    def test_source_selection_rejects_repeated_parent(self):
+        design = self.design()
+        primary = []
+        source_rows = []
+        for population, suite, count, questions in (
+            ("decision", "decision", 100, 2),
+            ("korean", "korean", 100, 2),
+        ):
+            for index in range(count):
+                workload = f"{population}-{index}"
+                parent = f"{population}-parent-{index}"
+                primary.append({
+                    "suite": suite,
+                    "workload_ids": [workload],
+                    "parent_ids": [parent],
+                })
+                source_rows.append({
+                    "workload_id": workload,
+                    "parent_id": parent,
+                    "question_count": questions,
+                })
+        controls = []
+        for index in range(64):
+            workload = f"control-{index}"
+            parent = f"control-parent-{index}"
+            controls.append({
+                "suite": "decision",
+                "workload_ids": [workload],
+                "parent_ids": [parent],
+            })
+            source_rows.append({
+                "workload_id": workload,
+                "parent_id": parent,
+                "question_count": 1,
+            })
+        schedules = {
+            "repetitions": {
+                "0": {
+                    "multi_primary": {"1": {"measured": primary}},
+                    "single_control": {"1": {"measured": controls}},
+                }
+            }
+        }
+        selected_source_rows(schedules, source_rows, design)
+        schedules["repetitions"]["0"]["multi_primary"]["1"]["measured"][1][
+            "parent_ids"
+        ] = ["decision-parent-0"]
+        source_rows[1]["parent_id"] = "decision-parent-0"
+        with self.assertRaisesRegex(ValueError, "repeats a parent"):
+            selected_source_rows(schedules, source_rows, design)
 
 
 if __name__ == "__main__":

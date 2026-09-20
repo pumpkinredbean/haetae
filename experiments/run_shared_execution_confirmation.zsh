@@ -9,7 +9,9 @@ output=/Users/minkyu/workspace/haetae/evaluations/shared-execution-confirmation-
 for process_index in 0 1 2 3 4 5; do
   marker="$output/process-${process_index}.meta.json"
   if [[ -f "$marker" ]]; then
-    print -r -- "$(date -Iseconds) skip completed process ${process_index}"
+    print -r -- "$(date -Iseconds) validate completed process ${process_index}"
+    uv run python -u -m experiments.confirm_shared_execution verify-process \
+      --out "$output" --process-index "$process_index"
   else
     print -r -- "$(date -Iseconds) start process ${process_index}"
     uv run python -u -m experiments.confirm_shared_execution measure \
@@ -19,7 +21,8 @@ for process_index in 0 1 2 3 4 5; do
 done
 
 if [[ -f "$output/summary.json" ]]; then
-  print -r -- "$(date -Iseconds) skip completed summary"
+  print -r -- "$(date -Iseconds) validate completed summary"
+  uv run python -u -m experiments.confirm_shared_execution verify --out "$output"
 else
   print -r -- "$(date -Iseconds) start summary"
   uv run python -u -m experiments.confirm_shared_execution summarize --out "$output"
