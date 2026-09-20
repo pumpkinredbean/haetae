@@ -12,8 +12,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 
 - Repository: https://github.com/pumpkinredbean/haetae
 - Branch: `main`
-- Latest pushed commit before the current checkpoint work: `2b5b880`
-- Current working tree: checkpoint format 3 implementation and tests; not yet pushed
+- Checkpoint format 3 implementation commit: `a30ba8b`
 - Aside conversation: `Clean Room Jev Reproduction`
 - Aside URL: https://chatgpt.com/c/6aaeba00-b670-83e8-9c29-3370b3c7945d
 - Review model: ChatGPT 6 Pro
@@ -112,7 +111,7 @@ tmux new-session -d -s haetae-v3 "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv 
 
 ## Next actions
 
-1. Commit and push checkpoint format 3, then send the exact commit SHA through Aside REPL for code review.
+1. Send exact commit `a30ba8b` through Aside REPL for code review.
 2. Apply supported code-review findings and repeat affected exact-resume and MPS checks.
 3. Start the fresh 1,536-token `runs/v3` baseline and keep its manifest details in this file.
 4. After completion, run certification across held-out sources, calibration, stress tests, and CPU/MPS latency measurements.
