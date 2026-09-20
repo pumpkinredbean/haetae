@@ -405,7 +405,26 @@ The controls narrow the interpretation. MPS single-question P/B stays near one w
 
 Next actions:
 
-1. Freeze an additive MPS-only, batch-one confirmation over the same 100 decision requests, 100 Korean requests, and 64 single-question controls. Preserve generation 79, temperature, precision, software, complete-request semantics, and the original report unchanged.
-2. Use six fresh processes. Before measurement, give P and B two complete untimed passes over every request; run no other benchmark scope first. Interleave adjacent P/B pairs by request with a frozen schedule that makes each request P-first in exactly three processes and B-first in three.
-3. Keep every observation and report each process, the original equal-workload estimator, and a process-and-parent resampling sensitivity. Retain the original decision and Korean gates separately and require P/B below one in at least five of six processes without an unexplained negative-control or order effect.
-4. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
+The additive MPS-only batch-one confirmation implementation is commit `5a5e60ce6ab8174bd42106ac072e6b280d26fc9e`. All 112 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
+
+- protocol SHA-256: `31e0f605f80f426cf72b68c9d9ca98aae9e881546bd53df8693435a331cb3972`;
+- schedule SHA-256: `1903d67bbfa065bb1155e9df60a15edf41902880e51fed511ccd7fbf92fac911`;
+- source checkpoint generation 79 and SHA-256 `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`;
+- source protocol, workload, schedule, and qualified-summary bytes are bound unchanged;
+- each of six processes contains the same 100 decision, 100 Korean, and 64 single-question-control requests;
+- every request is P-first in three processes and B-first in three, while each process has exactly 50/50/32 P-first requests in the three populations;
+- each fresh process gives both arms two full untimed complete-request passes, then measures one adjacent P/B pair per request before any other benchmark scope;
+- the report preserves the original equal-workload and parent-bootstrap gates, reports crossed process-and-parent uncertainty, requires P/B below one in at least five processes and in both arm-order strata, and treats a material single-question-control displacement as a failure;
+- no checkpoint inference has run under this confirmation protocol, and no locked test has been opened.
+
+Pending actions:
+
+1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `5a5e60c` and the frozen protocol and schedule.
+2. If approved, launch the resumable six-process script in tmux:
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-shared-confirmation-v1 "zsh -lc 'set -o pipefail; /Users/minkyu/workspace/haetae/experiments/run_shared_execution_confirmation.zsh 2>&1 | tee -a /Users/minkyu/workspace/haetae/shared_execution_confirmation_v1.log'"
+```
+
+3. Validate and externally review the complete measured artifacts. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
