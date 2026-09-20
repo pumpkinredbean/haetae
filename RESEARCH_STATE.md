@@ -159,7 +159,7 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 - immutable train and internal-validation fingerprints match the prior full attempt: `372dfb7edbe90dbf61be1ab8171a8833f74eba616b39103ecee9896e184be5c1` and `c95c9c32397584182f1e75ca6accfbbe256b4cee2b2c1698fe0d15242b78758b`;
 - generation 1 is the validated running checkpoint at step 0;
 - generation 2 is the first durable training checkpoint at step 50, SHA-256 `53fdd30ff443205a73dc62f0dc095f5800ac7148b3b916085350fba24024cd44`; step 50 loss was 1.3054 with zero rejected batches, and the run continued past step 75;
-- The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. The same run remains active; generation 36 published step 1750 with SHA-256 `129cc8cb82846996c7279c067b73ebff7339b943e15986ee3d842e65cf0e29c3` and continued past step 1775.
+- The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. The same run remains active; generation 41 published step 2000 with SHA-256 `ac84d2d589d054842445632995e7c6c0876a1ad8c6fe3ac2307d699ff356634d` and continued past step 2025.
 - the final evaluation population was frozen immediately after start in `evaluations/v3-micro4`. Plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281. No model result was inspected before this assignment.
 
 ## Frozen measurement protocol
@@ -175,7 +175,7 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 
 ChatGPT 6 Pro reviewed exact commit `cfaa7517f26660365259f22f5813a2fc1acfb85c` through the Aside REPL. It ran the 14 checked-in measurement tests plus 24 controlled probes and returned `MEASUREMENT HOLD; keep runs/v3-micro4 training unchanged`. The review reproduced a conformal floating-point boundary failure, unfrozen C inference settings, missing statistical files in the evaluator identity, incomplete consumed-parent checks, tie-obscured Choice action changes, and unrecoverable C artifacts after a latency failure. It also requested clearer soft-target reliability, ontology-safe macro-F1, and same-process latency terminology.
 
-The working tree fixes those findings:
+Commit `ee3d22a12d379c65b6686a22aa053a03d9eb55cd` fixes those findings:
 
 - conformal prediction sets compare `1 - p <= q`, the exact score used during fitting;
 - formal C scoring must match the frozen device, batch, dtype, attention implementation, software, tokenizer, model configuration, platform, and machine identity before C is read;
@@ -188,6 +188,8 @@ The working tree fixes those findings:
 - latency repetitions are labeled same-process repeated blocks.
 
 The metadata-only parent audit reconstructed 19,945 consumed parent keys and inspected 20,577 parents in the original A/B/C files. Consumed overlap and cross-role overlap were both zero. The original role files therefore remain unchanged: A `d455efa9d75cf5833bc5be090cc462001fd45b4f7bf10e663a3c476fda106600`, B `b916f9ddef595c859af3beb569a6b5e1ff06b4b04bc96a48b442a14d38cdf0c5`, and C `e6ddd1277da8b061e0d4e4f76313bb2599efe1f1018676e55e1757073412b5b5`. Protocol amendment `0223911155398c36061fec96a62af8035569aa0561f71437cfe80f73e3947270` binds corrected code from commit `ee3d22a` to base plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` without rewriting membership.
+
+ChatGPT 6 Pro is re-reviewing the exact amended measurement commit and the exact shared-state experiment commit through the same Aside REPL conversation. It has already reproduced a mismatch between ModernBERT's total `local_attention` setting and the prototype's interpretation of that value as a half-window. No shared-state training run starts until the review is complete and that boundary is corrected and re-tested.
 
 All 61 repository tests pass. A HelpSteer2 mechanics run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News mechanics run exercised raw and scaled permutation, controlled removal, baselines, paired metrics, and latency. These are mechanics smokes, not quality results.
 
@@ -205,10 +207,20 @@ An offline preflight loaded every declared remote source at its exact cached com
 - The evaluator fits one source-balanced temperature on decision-v4 calibration and reports raw and scaled decision-v4 and transfer-v4 development metrics. Locked tests require an explicit code gate and have not been opened.
 - All shared-state, adapter, training-objective, and evaluation tests pass within the 61-test repository suite.
 
+The Korean comparison suite was frozen before any candidate-model result was inspected:
+
+- `evaluations/korean-v1` excludes 41,891 state identities consumed by the baseline train, internal validation, and frozen A/B/C populations;
+- KLUE-YNAT contributes 1,000 development and 1,000 locked parents, balanced across seven topic labels; NSMC contributes 1,000 and 1,000, balanced across positive and negative sentiment;
+- 638 duplicate NSMC records were detected, including 39 exact texts with conflicting labels; conflicting states were excluded before selection;
+- development and locked parents are disjoint, and the locked file remains gated and has not been parsed after freezing;
+- the manifest file SHA-256 is `097c98cc3c9c8d47ef93962b455e2cd84f2639d3d0ebc4a77c81254f1e53136d`; its canonical content SHA-256 is `be55bb92f5ae30df868c6c45798f8072b54491e7657ee3527a6c98ba5242d778`;
+- the development split SHA-256 is `82db10f63886cd26f23eac79b0e5c5b87236d7b9eaf7102af5956fd3bdc2355b`. All 2,000 requests and 5,000 questions fit mmBERT without state truncation, with a maximum packed length of 242 tokens;
+- shared-state packing uses 354,379 input tokens versus 429,873 for separate questions, a 17.56% reduction before padding. This is a token-count result, not a latency claim.
+
 ## Next actions
 
 1. Keep the resumed baseline writer alive and verify periodic generations through the completed step 3000 checkpoint.
-2. Finish ChatGPT 6 Pro's exact measurement review, implement reproducible findings, and freeze a replacement plan if the measurement-code identity changes.
-3. Fit the frozen policy and evaluate role C only after the baseline completes.
-4. Push the shared-state prototype and obtain an exact-commit review before starting its MPS run.
-5. Compare the completed baseline and shared-state model on the frozen Kev development suites, then freeze a parent-disjoint Korean development and locked suite before model selection.
+2. Finish ChatGPT 6 Pro's exact measurement and shared-state reviews, implement every reproduced blocker, and obtain an exact-commit start decision.
+3. Fit the frozen baseline policy and evaluate role C only after the baseline completes and the measurement review accepts the amendment.
+4. Start the shared-state MPS run only after its review accepts the implementation and the baseline releases the accelerator.
+5. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.

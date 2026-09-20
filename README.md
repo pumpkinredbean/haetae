@@ -40,6 +40,10 @@ It shares no weights, no training data, and no outputs with Jev.
     src/haetae/certify.py    calibration + selective-risk certification harness
     src/haetae/measure.py    frozen A/B/C evaluation and signed result artifacts
     src/haetae/serve.py      /v1/systemone FastAPI
+    experiments/shared_state.py       shared-state question-branch prototype
+    experiments/train_shared.py       immutable shared-state trainer
+    experiments/evaluate_shared.py    development-suite evaluator
+    experiments/freeze_korean_suite.py Korean development/test freezer
 
 ## Contract notes
 
@@ -109,3 +113,19 @@ simultaneous selective-risk bounds, controlled Choice stress results, and
 synchronized latency distributions.
 
     uv run python -m haetae.measure evaluate --plan evaluations/baseline --run-dir runs/baseline --device mps --batch 4 --allow-certification
+
+## Shared-state experiment
+
+The experimental model encodes a state once, then runs isolated bidirectional
+question branches with restarted logical positions. A pointer head scores each
+question's dynamic options. Its trainer uses digest-bound frozen suites and the
+same immutable-generation recovery rules as the baseline.
+
+Freeze a Korean development and locked test suite while excluding every state
+used by the baseline train, internal validation, and A/B/C populations:
+
+    uv run python -m experiments.freeze_korean_suite --run-dir runs/baseline --baseline-plan evaluations/baseline --out evaluations/korean-v1
+
+The freezer removes exact duplicates with conflicting labels and balances each
+source by its primary label. Development data may be used for model selection.
+The adapter rejects the locked test unless its explicit test gate is enabled.
