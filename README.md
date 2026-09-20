@@ -144,6 +144,13 @@ Korean development:
 
     uv run python -m experiments.freeze_shared_suite --kev-suite evaluations/kev-decision-v7 --transfer-suite evaluations/kev-transfer-v4 --run-dir runs/baseline --korean-suite evaluations/korean-v1 --out evaluations/shared-v1
 
+Before inspecting either model on development data, freeze the comparison
+bindings and the common-clean subset. The plan removes complete development
+requests whose exact state was already consumed by the baseline train or
+internal-validation partition:
+
+    uv run python -m experiments.freeze_comparison --baseline-run runs/baseline --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --out evaluations/comparison-v1
+
 Train two complete request epochs when the suite has 15,572 requests and the
 effective batch is eight:
 
@@ -153,4 +160,10 @@ The development evaluator fits temperature on the combined calibration split
 and scores the frozen decision, transfer, and Korean development suites. It does
 not expose a test-split argument:
 
-    uv run python -m experiments.evaluate_shared --run runs/shared-v1 --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 2 --out evaluations/shared-v1-development.json
+    uv run python -m experiments.evaluate_baseline --run runs/baseline --comparison-plan evaluations/comparison-v1/plan.json --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 4 --out evaluations/baseline-development.json
+
+    uv run python -m experiments.evaluate_shared --run runs/shared-v1 --comparison-plan evaluations/comparison-v1/plan.json --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 2 --out evaluations/shared-v1-development.json
+
+Both reports contain the complete public development result and the same
+common-clean result. The latter excludes any state previously consumed by the
+baseline, preventing a baseline-only overlap from biasing the comparison.

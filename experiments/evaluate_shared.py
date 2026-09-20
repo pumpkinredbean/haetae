@@ -19,17 +19,16 @@ from haetae.checkpoint import (
     model_config_fingerprint,
     tokenizer_fingerprint,
 )
+from experiments.comparison_protocol import (
+    common_clean_predictions,
+    load_comparison_plan,
+    request_state_sha256,
+    training_clean_calibration_predictions,
+    validate_suite_binding,
+)
 from experiments.kev_adapter import file_sha256, load_frozen_split
 from experiments.shared_state import encode_request, load_shared_state_model
 from experiments.train_shared import source_identity
-
-
-EXPECTED_TRANSFER_MANIFEST_SHA256 = (
-    "31677c2256b406222e7d94ffdc0a02a70ce05746b9efe307876024c4e77291d1"
-)
-EXPECTED_KOREAN_MANIFEST_SHA256 = (
-    "614a7c0a2febc617f2aaf34bf1906cc8bf0ed958e9138052a37da5ba5b04d5c1"
-)
 
 
 def logits_to_list(logits: torch.Tensor) -> list[float]:
@@ -119,6 +118,7 @@ def infer_requests(
                     predictions.append({
                         "request_id": request["meta"].get("id"),
                         "group_id": request["meta"].get("group_id"),
+                        "state_sha256": request_state_sha256(request),
                         "question_id": question["id"],
                         "source": question["source"],
                         "type": question["type"],
@@ -350,10 +350,28 @@ def packing_report(
     }
 
 
+def development_report(
+    predictions: list[dict],
+    clean_predictions: list[dict],
+    clean_audit: dict,
+    temperature: float,
+) -> dict:
+    return {
+        "raw": grouped_metrics(predictions, 1.0),
+        "scaled": grouped_metrics(predictions, temperature),
+        "common_clean": {
+            **clean_audit,
+            "raw": grouped_metrics(clean_predictions, 1.0),
+            "scaled": grouped_metrics(clean_predictions, temperature),
+        },
+    }
+
+
 def evaluate(args) -> dict:
     output = Path(args.out).resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite {output}")
+    comparison_plan = load_comparison_plan(args.comparison_plan)
     device = args.device or (
         "mps" if torch.backends.mps.is_available() else "cpu"
     )
@@ -367,16 +385,21 @@ def evaluate(args) -> dict:
     if decision_manifest_sha256 != run["spec"]["experiment"][
             "suite_manifest_sha256"]:
         raise ValueError("decision suite differs from the training-bound suite")
+    validate_suite_binding(
+        comparison_plan, "decision", args.decision_suite,
+    )
     transfer_manifest_sha256 = file_sha256(
         Path(args.transfer_suite) / "manifest.json"
     )
-    if transfer_manifest_sha256 != args.expect_transfer_manifest_sha256:
-        raise ValueError("transfer suite manifest differs from the predeclared digest")
+    validate_suite_binding(
+        comparison_plan, "transfer", args.transfer_suite,
+    )
     korean_manifest_sha256 = file_sha256(
         Path(args.korean_suite) / "manifest.json"
     )
-    if korean_manifest_sha256 != args.expect_korean_manifest_sha256:
-        raise ValueError("Korean suite manifest differs from the predeclared digest")
+    validate_suite_binding(
+        comparison_plan, "korean", args.korean_suite,
+    )
     decision_calibration, decision_manifest = load_frozen_split(
         args.decision_suite, "calibration",
     )
@@ -395,7 +418,12 @@ def evaluate(args) -> dict:
         model, tokenizer, delimiters, decision_calibration,
         max_length, args.batch,
     )
-    temperature = fit_source_balanced_temperature(calibration_predictions)
+    calibration_clean, calibration_clean_audit = (
+        training_clean_calibration_predictions(
+            calibration_predictions, comparison_plan,
+        )
+    )
+    temperature = fit_source_balanced_temperature(calibration_clean)
     decision_predictions = infer_requests(
         model, tokenizer, delimiters, decision_development,
         max_length, args.batch,
@@ -408,9 +436,19 @@ def evaluate(args) -> dict:
         model, tokenizer, delimiters, korean_development,
         max_length, args.batch,
     )
+    decision_clean, decision_clean_audit = common_clean_predictions(
+        decision_predictions, comparison_plan, "decision",
+    )
+    transfer_clean, transfer_clean_audit = common_clean_predictions(
+        transfer_predictions, comparison_plan, "transfer",
+    )
+    korean_clean, korean_clean_audit = common_clean_predictions(
+        korean_predictions, comparison_plan, "korean",
+    )
     report = {
         "version": 1,
         "status": "evaluated",
+        "comparison_plan_sha256": comparison_plan["plan_sha256"],
         "run": {
             "run_id": run["run_id"],
             "spec_sha256": run["spec_sha256"],
@@ -425,15 +463,21 @@ def evaluate(args) -> dict:
             "fit_split_sha256": decision_manifest["files"][
                 "calibration.jsonl"
             ]["sha256"],
-            "objective": "source-balanced soft-target cross-entropy",
+            "objective": (
+                "source-balanced soft-target cross-entropy after excluding "
+                "baseline-training state overlap"
+            ),
+            "common_clean": calibration_clean_audit,
         },
         "decision_development": {
             "manifest_sha256": decision_manifest_sha256,
             "split_sha256": decision_manifest["files"][
                 "development.jsonl"
             ]["sha256"],
-            "raw": grouped_metrics(decision_predictions, 1.0),
-            "scaled": grouped_metrics(decision_predictions, temperature),
+            **development_report(
+                decision_predictions, decision_clean,
+                decision_clean_audit, temperature,
+            ),
             "packing": packing_report(
                 tokenizer, delimiters, decision_development, max_length,
             ),
@@ -443,8 +487,10 @@ def evaluate(args) -> dict:
             "split_sha256": transfer_manifest["files"][
                 "development.jsonl"
             ]["sha256"],
-            "raw": grouped_metrics(transfer_predictions, 1.0),
-            "scaled": grouped_metrics(transfer_predictions, temperature),
+            **development_report(
+                transfer_predictions, transfer_clean,
+                transfer_clean_audit, temperature,
+            ),
             "packing": packing_report(
                 tokenizer, delimiters, transfer_development, max_length,
             ),
@@ -454,8 +500,10 @@ def evaluate(args) -> dict:
             "split_sha256": korean_manifest["files"][
                 "development.jsonl"
             ]["sha256"],
-            "raw": grouped_metrics(korean_predictions, 1.0),
-            "scaled": grouped_metrics(korean_predictions, temperature),
+            **development_report(
+                korean_predictions, korean_clean,
+                korean_clean_audit, temperature,
+            ),
             "packing": packing_report(
                 tokenizer, delimiters, korean_development, max_length,
             ),
@@ -486,17 +534,10 @@ def canonical_report_sha256(report: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", required=True)
+    parser.add_argument("--comparison-plan", required=True)
     parser.add_argument("--decision-suite", required=True)
     parser.add_argument("--transfer-suite", required=True)
     parser.add_argument("--korean-suite", required=True)
-    parser.add_argument(
-        "--expect-transfer-manifest-sha256",
-        default=EXPECTED_TRANSFER_MANIFEST_SHA256,
-    )
-    parser.add_argument(
-        "--expect-korean-manifest-sha256",
-        default=EXPECTED_KOREAN_MANIFEST_SHA256,
-    )
     parser.add_argument("--out", required=True)
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"))
     parser.add_argument("--batch", type=int, default=2)

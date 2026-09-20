@@ -42,10 +42,13 @@ def canonical_sha256(value) -> str:
 
 def source_identity(repository: Path) -> dict:
     files = [
+        repository / "experiments" / "comparison_protocol.py",
+        repository / "experiments" / "evaluate_baseline.py",
+        repository / "experiments" / "evaluate_shared.py",
+        repository / "experiments" / "freeze_comparison.py",
         repository / "experiments" / "kev_adapter.py",
         repository / "experiments" / "shared_state.py",
         repository / "experiments" / "train_shared.py",
-        repository / "experiments" / "evaluate_shared.py",
         repository / "src" / "haetae" / "checkpoint.py",
         repository / "pyproject.toml",
     ]
