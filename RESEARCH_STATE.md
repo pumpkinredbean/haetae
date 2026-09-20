@@ -369,7 +369,11 @@ tmux new-session -d -s haetae-shared-execution-v1 "zsh -lc 'set -o pipefail; /Us
 
 Session: `haetae-shared-execution-v1`; log: `shared_execution_v1.log`; stage artifacts: `evaluations/shared-execution-v1/*.meta.json`; final report: `evaluations/shared-execution-v1/summary.json`.
 
-The MPS equivalence stage completed 3,963 requests and 22,537 bound records. Independent validation accepted all 14 same-device groups. Maximum total variation is `8.97131840676968e-06`, maximum absolute log-probability difference is `4.1134871864301203e-05`, and both material and near-tie action changes are zero. Artifact SHA-256 is `d5a70bdd414cbf16700115708d726f73509c7b8e40c33e0b0b6550bd032c6162`. CPU equivalence is the active stage; timing and memory have not started.
+The MPS equivalence stage completed 3,963 requests and 22,537 bound records. Independent validation accepted all 14 same-device groups. Maximum total variation is `8.97131840676968e-06`, maximum absolute log-probability difference is `4.1134871864301203e-05`, and both material and near-tie action changes are zero. Artifact SHA-256 is `d5a70bdd414cbf16700115708d726f73509c7b8e40c33e0b0b6550bd032c6162`.
+
+The CPU equivalence stage also completed 3,963 requests and 22,537 bound records, with all 14 groups passing. Maximum total variation is `5.123981406701672e-06`, maximum absolute log-probability difference is `1.9270702280138607e-05`, and action changes are zero. Artifact SHA-256 is `df53ef8697a7be696caecbc40100e8c137c48c5d986216532c9206e82c12ad28`. The descriptive CPU-versus-MPS packed comparison has zero action changes across 7,227 questions; its maximum total variation is `8.140450314960464e-06` at temperature 1 and `5.769615788867033e-06` at the fixed fitted temperature.
+
+MPS timing repetitions 0 and 1 completed in distinct processes and passed schedule, row, duration, derived-value, and artifact validation. Repetition 2 is active. Timing gates remain uncomputed until all three repetitions complete; memory has not started.
 
 Next actions:
 
