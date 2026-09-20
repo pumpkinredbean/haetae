@@ -14,12 +14,15 @@ from haetae.measure import (
     fit_source_balanced_temperature,
     freeze_track,
     independent_formal_units,
+    load_or_compute_bound_report,
+    load_or_create_prediction_snapshot,
     metric_summary,
     ontology_digest,
     prepare,
     reorder_packed,
     selective_risk_report,
     state_digest,
+    validate_frozen_inference,
     validate_role_isolation,
 )
 from haetae.train import dataset_fingerprint
@@ -117,6 +120,23 @@ class MeasurementPreparationTest(unittest.TestCase):
             item["meta"]["parent_id"] for item in frozen
         })
 
+    def test_consumed_parent_excludes_changed_sibling_state(self):
+        records = [row(index, f"parent-{index}") for index in range(10)]
+        records[0]["state"] = "new response for a consumed prompt"
+
+        def loader(split, limit):
+            return iter(copy.deepcopy(records))
+
+        with mock.patch.dict("haetae.measure.LOADERS", {"fixture": loader}):
+            frozen, audit = freeze_track(
+                self.spec, 31, 8, set(), set(),
+                {("fixture", "parent-0")},
+            )
+        self.assertEqual(audit["pool_audit"]["excluded_overlap_parents"], 1)
+        self.assertNotIn("parent-0", {
+            item["meta"]["parent_id"] for item in frozen
+        })
+
     def test_role_validator_rejects_shared_state(self):
         base = {
             "record": row(0),
@@ -131,6 +151,23 @@ class MeasurementPreparationTest(unittest.TestCase):
                              role="C")
         with self.assertRaisesRegex(ValueError, "roles overlap"):
             validate_role_isolation([base, other])
+
+    def test_role_validator_namespaces_parent_by_source_not_track(self):
+        first = {
+            "record": row(0),
+            "meta": {
+                "track": "matched", "source": "mnli", "parent_id": "p0",
+                "state_sha256": "a" * 64, "record_sha256": "b" * 64,
+                "role": "A",
+            },
+        }
+        second = copy.deepcopy(first)
+        second["meta"].update(
+            track="mismatched", state_sha256="c" * 64,
+            record_sha256="d" * 64, role="C",
+        )
+        with self.assertRaisesRegex(ValueError, "roles overlap"):
+            validate_role_isolation([first, second])
 
     def test_prepare_writes_digest_bound_role_files(self):
         training = [row(index) for index in range(5)]
@@ -185,6 +222,49 @@ class MeasurementPreparationTest(unittest.TestCase):
 
 
 class MeasurementMetricTest(unittest.TestCase):
+    def test_formal_c_rejects_changed_inference_settings(self):
+        expected = {"device": "mps", "batch": 4, "dtype": "float32"}
+        validate_frozen_inference(expected, dict(expected))
+        with self.assertRaisesRegex(ValueError, "batch"):
+            validate_frozen_inference(expected, {**expected, "batch": 1})
+
+    def test_c_snapshot_and_reports_resume_without_recomputation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            calls = {"prediction": 0, "report": 0}
+
+            def predictions():
+                calls["prediction"] += 1
+                return [prediction(1, [1.0, 0.0], 0)]
+
+            first_predictions, first_snapshot = (
+                load_or_create_prediction_snapshot(
+                    directory, {"policy": "fixed"}, predictions,
+                )
+            )
+            second_predictions, second_snapshot = (
+                load_or_create_prediction_snapshot(
+                    directory, {"policy": "fixed"}, predictions,
+                )
+            )
+            self.assertEqual(calls["prediction"], 1)
+            self.assertEqual(first_predictions, second_predictions)
+            self.assertEqual(first_snapshot, second_snapshot)
+
+            def report():
+                calls["report"] += 1
+                return {"value": 3}
+
+            first_report, first_artifact = load_or_compute_bound_report(
+                directory / "stress.json", {"snapshot": "fixed"}, report,
+            )
+            second_report, second_artifact = load_or_compute_bound_report(
+                directory / "stress.json", {"snapshot": "fixed"}, report,
+            )
+            self.assertEqual(calls["report"], 1)
+            self.assertEqual(first_report, second_report)
+            self.assertEqual(first_artifact, second_artifact)
+
     def test_reorder_packed_preserves_exact_prefix_and_option_blocks(self):
         packed = (
             [101, 7, 102, 8, 102, 11, 12, 102, 21],
@@ -252,6 +332,42 @@ class MeasurementMetricTest(unittest.TestCase):
             ["semantic_top1_agreement"], 1.0
         )
 
+    def test_choice_stress_reports_actual_tie_broken_action(self):
+        import torch
+
+        class Tokenizer:
+            cls_token_id = 101
+            sep_token_id = 102
+            pad_token_id = 0
+
+            def __call__(self, text, add_special_tokens=False):
+                return {"input_ids": [1]}
+
+        class TiedModel(torch.nn.Module):
+            def forward(self, input_ids, attention_mask, option_pos, group_ptr):
+                return [
+                    torch.zeros(
+                        int(group_ptr[index + 1] - group_ptr[index]),
+                    )
+                    for index in range(len(group_ptr) - 1)
+                ]
+
+        item = prediction(4, [0.0, 0.0], 0, parent="tie")
+        report = choice_stress_report(
+            TiedModel(), Tokenizer(), [{
+                "record": item["record"], "meta": item["meta"],
+            }], "cpu", batch=1, max_len=32, temperature=1.0,
+            seed=7, permutations=1, removals_per_record=1,
+        )
+        self.assertEqual(
+            report["permutation"]["raw"]["all"]
+            ["semantic_top1_agreement"], 0.0,
+        )
+        self.assertEqual(
+            report["permutation"]["raw"]["all"]["mean_total_variation"],
+            0.0,
+        )
+
     def test_nll_uses_stable_logits_without_probability_floor(self):
         summary = metric_summary([
             prediction(1, [100.0, -100.0], 1),
@@ -267,6 +383,22 @@ class MeasurementMetricTest(unittest.TestCase):
         ], temperature=1.0)
         self.assertAlmostEqual(summary["brier_histogram"], 0.0, places=12)
         self.assertAlmostEqual(summary["brier_annotation"], 0.48, places=12)
+        self.assertAlmostEqual(
+            summary["majority_or_consensus_top_label_reliability"]["ece"],
+            0.4,
+        )
+        self.assertAlmostEqual(
+            summary["annotation_target_top_label_reliability"]["ece"],
+            0.0,
+        )
+
+    def test_macro_f1_requires_one_ordered_label_ontology(self):
+        first = prediction(1, [2.0, 0.0], 0)
+        second = prediction(2, [0.0, 2.0], 1)
+        second["record"]["options"] = ["different-a", "different-b"]
+        summary = metric_summary([first, second], temperature=1.0)
+        self.assertEqual(summary["accuracy"], 1.0)
+        self.assertEqual(summary["macro_f1"]["status"], "not_applicable")
 
     def test_score_metrics_include_each_ordinal_threshold(self):
         summary = metric_summary([

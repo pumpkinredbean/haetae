@@ -159,7 +159,7 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 - immutable train and internal-validation fingerprints match the prior full attempt: `372dfb7edbe90dbf61be1ab8171a8833f74eba616b39103ecee9896e184be5c1` and `c95c9c32397584182f1e75ca6accfbbe256b4cee2b2c1698fe0d15242b78758b`;
 - generation 1 is the validated running checkpoint at step 0;
 - generation 2 is the first durable training checkpoint at step 50, SHA-256 `53fdd30ff443205a73dc62f0dc095f5800ac7148b3b916085350fba24024cd44`; step 50 loss was 1.3054 with zero rejected batches, and the run continued past step 75;
-- The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. Generation 26 then published step 1250 with SHA-256 `8e0e83e97232f805fb548a8c146b2c21f8a889a536212808bea9592854d82e8f`; the same run is active and continued past step 1275.
+- The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. The same run remains active; generation 35 published step 1700 with SHA-256 `eca057ad94cbab32e2a9a7d4ba14016fee423e72fca2fae3d07769b2be62837a` and continued past step 1725.
 - the final evaluation population was frozen immediately after start in `evaluations/v3-micro4`. Plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281. No model result was inspected before this assignment.
 
 ## Frozen measurement protocol
@@ -173,7 +173,23 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 - Choice stress uses one formal question per parent and cell across all eligible sources. Raw and temperature-scaled permutation and controlled option-removal metrics reuse the exact retained state and instruction token prefix. Removal never deletes the gold option or the original top prediction, and binary questions are reported as ineligible rather than divided by zero.
 - Latency freezes Noul, Score, highest-option-count Choice, longest-context, and digest-selected mixed workload entries. It records model-only and packing-inclusive raw timings and distributions for batch one and the evaluation batch. The default protocol uses 30 warmups and 200 timed trials in each of three independent runs. MPS trials synchronize before and after timing and record workload shape, software, hardware, dtype, attention implementation, and accelerator memory.
 
-The protocol has 14 focused tests; all 41 repository tests pass. It also passed two real completed-checkpoint paths. A HelpSteer2 run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News run exercised raw and scaled metrics over 30 semantic option permutations and 10 controlled option removals from 10 C-role parents with no context-prefix drift. These are mechanics smokes, not quality results.
+ChatGPT 6 Pro reviewed exact commit `cfaa7517f26660365259f22f5813a2fc1acfb85c` through the Aside REPL. It ran the 14 checked-in measurement tests plus 24 controlled probes and returned `MEASUREMENT HOLD; keep runs/v3-micro4 training unchanged`. The review reproduced a conformal floating-point boundary failure, unfrozen C inference settings, missing statistical files in the evaluator identity, incomplete consumed-parent checks, tie-obscured Choice action changes, and unrecoverable C artifacts after a latency failure. It also requested clearer soft-target reliability, ontology-safe macro-F1, and same-process latency terminology.
+
+The working tree fixes those findings:
+
+- conformal prediction sets compare `1 - p <= q`, the exact score used during fitting;
+- formal C scoring must match the frozen device, batch, dtype, attention implementation, software, tokenizer, model configuration, platform, and machine identity before C is read;
+- code identity includes calibration, certification, checkpoint, data, evaluation, model, training, and measurement modules;
+- consumed and cross-track parents use source-namespaced identities;
+- permutation stress records the semantic option actually selected after position-based tie breaking;
+- C logits, Choice stress, and latency are independently digest-bound and resumable;
+- reliability distinguishes majority or consensus correctness from annotation-target probability;
+- macro-F1 is unavailable unless every record shares one ordered label ontology;
+- latency repetitions are labeled same-process repeated blocks.
+
+The metadata-only parent audit reconstructed 19,945 consumed parent keys and inspected 20,577 parents in the original A/B/C files. Consumed overlap and cross-role overlap were both zero. The original role files therefore remain unchanged: A `d455efa9d75cf5833bc5be090cc462001fd45b4f7bf10e663a3c476fda106600`, B `b916f9ddef595c859af3beb569a6b5e1ff06b4b04bc96a48b442a14d38cdf0c5`, and C `e6ddd1277da8b061e0d4e4f76313bb2599efe1f1018676e55e1757073412b5b5`. A signed protocol amendment will link corrected code to base plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` without rewriting membership.
+
+All 61 repository tests pass. A HelpSteer2 mechanics run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News mechanics run exercised raw and scaled permutation, controlled removal, baselines, paired metrics, and latency. These are mechanics smokes, not quality results.
 
 An offline preflight loaded every declared remote source at its exact cached commit plus both local Korean files, reconstructed the old full run's 25,500 training and 3,400 internal-validation questions, and froze every registered track without a role leak. At the default 1,600-parent cap per track, plan `e9440dafb69a756a5b8beab3cbc7fbcc72bc13af65a4f99690d05016e0478faf` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281.
 
@@ -187,7 +203,7 @@ An offline preflight loaded every declared remote source at its exact cached com
 - The transfer-v4 development split SHA-256 is `ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e`. Its 764 requests contain one question each, so it measures transfer quality but not multi-question efficiency.
 - The trainer binds suite bytes, model revision, tokenizer, code, optimizer, scheduler, data order, and random state to immutable periodic generations. It averages question losses within a request and then averages requests, uses Choice permutation augmentation, and adds ranked probability score for Score questions.
 - The evaluator fits one source-balanced temperature on decision-v4 calibration and reports raw and scaled decision-v4 and transfer-v4 development metrics. Locked tests require an explicit code gate and have not been opened.
-- Fifty-four repository tests pass, including 13 focused shared-state, adapter, training-objective, and evaluation tests.
+- All shared-state, adapter, training-objective, and evaluation tests pass within the 61-test repository suite.
 
 ## Next actions
 

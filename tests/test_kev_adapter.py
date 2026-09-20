@@ -10,7 +10,7 @@ from experiments.kev_adapter import flatten_for_baseline, load_frozen_split
 class KevAdapterTest(unittest.TestCase):
     def test_loads_digest_bound_typed_requests(self):
         request = {
-            "state": {"passage": "evidence", "count": 2},
+            "state": {"passage": "evidence\u2028continued", "count": 2},
             "questions": {
                 "route": {
                     "type": "choice",

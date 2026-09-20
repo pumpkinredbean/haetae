@@ -108,7 +108,9 @@ def conformal_threshold(probs_list, labels, alpha=0.1):
 
 
 def prediction_set(probs, q):
-    return [i for i, p in enumerate(probs) if float(p) >= 1.0 - q]
+    # Use the same score expression that produced q. Reconstructing a
+    # probability cutoff as 1 - q can round upward at the inclusive boundary.
+    return [i for i, p in enumerate(probs) if 1.0 - float(p) <= q]
 
 
 def binomial_upper_bound(errors, n, confidence=0.95):

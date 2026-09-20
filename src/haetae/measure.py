@@ -13,6 +13,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 import gc
 import hashlib
+from importlib import metadata as package_metadata
 import json
 import math
 import os
@@ -195,6 +196,17 @@ def parent_identity(record: dict) -> str:
     return str(parent) if parent is not None else "state:" + state_digest(record)
 
 
+def namespaced_parent(namespace: str, record: dict) -> tuple[str, str]:
+    return namespace, parent_identity(record)
+
+
+def frozen_parent_key(meta: dict) -> tuple[str, str]:
+    return (
+        meta.get("parent_namespace", meta.get("source", meta["track"])),
+        meta["parent_id"],
+    )
+
+
 def validate_evaluation_record(record: dict, spec: TrackSpec,
                                split: str, row_index: int) -> None:
     options = record.get("options")
@@ -231,6 +243,7 @@ def reconstruct_consumed(run: dict) -> dict:
     config = run["spec"]["config"]
     source_names = [name.strip() for name in config["sources"].split(",")]
     train, validation = [], []
+    parent_namespaces = {}
     saved_random = random.getstate()
     random.seed(config["seed"])
     try:
@@ -239,6 +252,8 @@ def reconstruct_consumed(run: dict) -> dict:
                 split="train",
                 limit=config["per_source"] + config["eval_per_source"],
             ))
+            for record in rows:
+                parent_namespaces[id(record)] = source
             parents: dict[object, list[dict]] = {}
             for index, record in enumerate(rows):
                 # train.py uses id(record) for ungrouped rows. Stable row
@@ -314,6 +329,10 @@ def reconstruct_consumed(run: dict) -> dict:
         "validation_fingerprint": observed_validation,
         "record_digests": {record_digest(record) for record in all_records},
         "state_digests": {state_digest(record) for record in all_records},
+        "parent_keys": {
+            namespaced_parent(parent_namespaces[id(record)], record)
+            for record in all_records
+        },
         "training_only_priors": {
             "ontology": "exact source, primitive, and ordered option texts",
             "minimum_training_records": 20,
@@ -324,7 +343,10 @@ def reconstruct_consumed(run: dict) -> dict:
 
 
 def _scan_parents(spec: TrackSpec, split: str, forbidden_records: set[str],
-                  forbidden_states: set[str]) -> tuple[set[str], set[str], dict]:
+                  forbidden_states: set[str],
+                  forbidden_parents: set[tuple[str, str]] | None = None,
+                  ) -> tuple[set[str], set[str], dict]:
+    forbidden_parents = forbidden_parents or set()
     parents, excluded = set(), set()
     rows = 0
     for row_index, record in enumerate(_track_records(spec, split, None)):
@@ -332,7 +354,8 @@ def _scan_parents(spec: TrackSpec, split: str, forbidden_records: set[str],
         rows += 1
         parent = parent_identity(record)
         parents.add(parent)
-        if (record_digest(record) in forbidden_records
+        if (namespaced_parent(spec.source, record) in forbidden_parents
+                or record_digest(record) in forbidden_records
                 or state_digest(record) in forbidden_states):
             excluded.add(parent)
     eligible = parents - excluded
@@ -376,6 +399,7 @@ def _collect(spec: TrackSpec, split: str, selected: set[str],
                 "record_sha256": record_digest(record),
                 "state_sha256": state_digest(record),
                 "parent_id": parent,
+                "parent_namespace": spec.source,
                 "role": role_by_parent[parent],
             },
         })
@@ -391,13 +415,16 @@ def _collect(spec: TrackSpec, split: str, selected: set[str],
 
 def freeze_track(spec: TrackSpec, seed: int, max_parents: int,
                  forbidden_records: set[str],
-                 forbidden_states: set[str]) -> tuple[list[dict], dict]:
+                 forbidden_states: set[str],
+                 forbidden_parents: set[tuple[str, str]] | None = None,
+                 ) -> tuple[list[dict], dict]:
     """Freeze one track with parent-disjoint A/B/C roles."""
     if max_parents < 4:
         raise ValueError("max_parents must be at least 4")
     if spec.single_split:
         eligible, excluded, audit = _scan_parents(
             spec, spec.single_split, forbidden_records, forbidden_states,
+            forbidden_parents,
         )
         selected = _select_parents(
             eligible, min(max_parents, len(eligible)), seed,
@@ -428,6 +455,7 @@ def freeze_track(spec: TrackSpec, seed: int, max_parents: int,
         raise ValueError(f"incomplete split registry for {spec.name}")
     calibration_eligible, calibration_excluded, calibration_audit = _scan_parents(
         spec, spec.calibration_split, forbidden_records, forbidden_states,
+        forbidden_parents,
     )
     calibration_limit = min(max_parents // 2, len(calibration_eligible))
     calibration_selected = _select_parents(
@@ -452,6 +480,7 @@ def freeze_track(spec: TrackSpec, seed: int, max_parents: int,
     certification_eligible, certification_excluded, certification_audit = _scan_parents(
         spec, spec.certification_split, forbidden_records,
         forbidden_states | calibration_states,
+        forbidden_parents,
     )
     certification_limit = min(max_parents // 2, len(certification_eligible))
     certification_selected = _select_parents(
@@ -488,7 +517,10 @@ def validate_role_isolation(records: list[dict]) -> None:
     for item in records:
         meta = item["meta"]
         parent_roles.setdefault(
-            (meta["track"], meta["parent_id"]), set()
+            (
+                meta.get("parent_namespace", meta.get("source", meta["track"])),
+                meta["parent_id"],
+            ), set()
         ).add(meta["role"])
         state_roles.setdefault(meta["state_sha256"], set()).add(meta["role"])
         record_roles.setdefault(meta["record_sha256"], set()).add(meta["role"])
@@ -533,7 +565,10 @@ def _atomic_json(path: Path, value: dict) -> None:
 def _code_identity(repository: Path) -> dict:
     paths = [
         repository / "src" / "haetae" / name
-        for name in ("measure.py", "data.py", "model.py", "checkpoint.py")
+        for name in (
+            "measure.py", "calibrate.py", "certify.py", "checkpoint.py",
+            "data.py", "eval.py", "model.py", "train.py",
+        )
     ]
     digest = hashlib.sha256()
     files = {}
@@ -598,6 +633,7 @@ def prepare(run_dir: str | Path, output: str | Path, expect_run_id: str,
             frozen, audit = freeze_track(
                 spec, seed, max_parents,
                 consumed["record_digests"], consumed["state_digests"],
+                consumed["parent_keys"],
             )
             records.extend(frozen)
             track_audits[spec.name] = {"spec": asdict(spec), **audit}
@@ -619,7 +655,12 @@ def prepare(run_dir: str | Path, output: str | Path, expect_run_id: str,
                 "bytes": path.stat().st_size,
                 "records": len(frozen),
                 "parents": len({
-                    (item["meta"]["track"], item["meta"]["parent_id"])
+                    (
+                        item["meta"].get(
+                            "parent_namespace", item["meta"]["source"],
+                        ),
+                        item["meta"]["parent_id"],
+                    )
                     for item in frozen
                 }),
             }
@@ -697,16 +738,121 @@ def load_plan(directory: str | Path, enforce_code: bool = True) -> dict:
             raise ValueError(f"frozen role file mismatch: {filename}")
     if enforce_code:
         repository = Path(__file__).resolve().parents[2]
-        if _code_identity(repository)["sha256"] != plan["code"]["sha256"]:
-            raise ValueError("measurement code changed after population freeze")
+        current_code = _code_identity(repository)
+        if current_code["sha256"] != plan["code"]["sha256"]:
+            amendment_path = directory / "protocol-amendment.json"
+            if not amendment_path.is_file():
+                raise ValueError("measurement code changed after population freeze")
+            amendment = json.loads(amendment_path.read_text())
+            expected_amendment = amendment.get("amendment_sha256")
+            unsigned_amendment = dict(amendment)
+            unsigned_amendment.pop("amendment_sha256", None)
+            if expected_amendment != digest_value(unsigned_amendment):
+                raise ValueError("protocol amendment digest mismatch")
+            if (amendment.get("base_plan_sha256") != plan["plan_sha256"]
+                    or amendment.get("base_role_files") != plan["files"]):
+                raise ValueError("protocol amendment belongs to another freeze")
+            if amendment.get("code", {}).get("sha256") != current_code["sha256"]:
+                raise ValueError("measurement code differs from its amendment")
+            audit = amendment.get("parent_audit", {})
+            if (audit.get("consumed_overlap_count") != 0
+                    or audit.get("cross_role_overlap_count") != 0):
+                raise ValueError("protocol amendment contains a parent overlap")
+            plan = dict(plan)
+            plan["_protocol_amendment"] = amendment
     return plan
+
+
+def amend_protocol(plan_dir: str | Path) -> dict:
+    """Bind corrected evaluator code to an unchanged pre-result population."""
+    plan_dir = Path(plan_dir).resolve()
+    amendment_path = plan_dir / "protocol-amendment.json"
+    if amendment_path.exists():
+        raise FileExistsError(f"refusing to overwrite {amendment_path}")
+    plan = load_plan(plan_dir, enforce_code=False)
+    run_path = Path(plan["run"]["directory"]) / "run.json"
+    run = json.loads(run_path.read_text())
+    if (run.get("run_id") != plan["run"]["run_id"]
+            or run.get("spec_sha256") != plan["run"]["spec_sha256"]):
+        raise ValueError("frozen plan run identity changed")
+    consumed = reconstruct_consumed(run)
+    records = [
+        item
+        for role in ROLES
+        for item in load_role(plan_dir, role, plan)
+    ]
+    validate_role_isolation(records)
+
+    role_parent_keys = defaultdict(set)
+    for item in records:
+        meta = item["meta"]
+        key = (
+            meta.get("parent_namespace", meta["source"]),
+            meta["parent_id"],
+        )
+        role_parent_keys[meta["role"]].add(key)
+    evaluation_parent_keys = set().union(*role_parent_keys.values())
+    consumed_overlap = evaluation_parent_keys & consumed["parent_keys"]
+    cross_role_overlap = set()
+    for left_index, left in enumerate(ROLES):
+        for right in ROLES[left_index + 1:]:
+            cross_role_overlap.update(
+                role_parent_keys[left] & role_parent_keys[right]
+            )
+    if consumed_overlap or cross_role_overlap:
+        raise ValueError(
+            "parent audit failed: "
+            f"consumed={len(consumed_overlap)}, "
+            f"cross_role={len(cross_role_overlap)}"
+        )
+
+    def serializable(keys: set[tuple[str, str]]) -> list[list[str]]:
+        return [list(key) for key in sorted(keys)]
+
+    repository = Path(__file__).resolve().parents[2]
+    amendment = {
+        "version": 1,
+        "status": "protocol-amended",
+        "base_plan_sha256": plan["plan_sha256"],
+        "base_code_sha256": plan["code"]["sha256"],
+        "base_role_files": plan["files"],
+        "membership": "unchanged",
+        "code": _code_identity(repository),
+        "parent_audit": {
+            "consumed_parent_count": len(consumed["parent_keys"]),
+            "evaluation_parent_count": len(evaluation_parent_keys),
+            "consumed_overlap_count": 0,
+            "cross_role_overlap_count": 0,
+            "consumed_parent_keys_sha256": digest_value(
+                serializable(consumed["parent_keys"])
+            ),
+            "evaluation_parent_keys_sha256": digest_value(
+                serializable(evaluation_parent_keys)
+            ),
+        },
+        "corrections": [
+            "compare conformal nonconformity scores without reconstructing a cutoff",
+            "bind formal C inference to the fitted predictor runtime",
+            "include statistical and loading dependencies in code identity",
+            "audit consumed and cross-track parents in a source namespace",
+            "measure actual tie-broken Choice actions",
+            "reuse digest-bound C, stress, and latency artifacts after interruption",
+            "separate majority-label and annotation-target reliability",
+            "restrict macro-F1 to one ordered label ontology",
+            "label latency repetitions as same-process repeated blocks",
+        ],
+    }
+    amendment["amendment_sha256"] = digest_value(amendment)
+    _atomic_json(amendment_path, amendment)
+    return amendment
 
 
 def load_role(directory: str | Path, role: str, plan: dict) -> list[dict]:
     if role not in ROLES:
         raise ValueError(f"unknown evaluation role: {role}")
     path = Path(directory) / f"{role}.jsonl"
-    records = [json.loads(line) for line in path.read_text().splitlines()]
+    with path.open(encoding="utf-8") as handle:
+        records = [json.loads(line) for line in handle if line.strip()]
     descriptor = plan["files"][path.name]
     if len(records) != descriptor["records"]:
         raise ValueError(f"frozen role count mismatch: {role}")
@@ -789,6 +935,58 @@ def infer_role(run_dir: str | Path, records: list[dict], device: str,
     if device == "mps":
         torch.mps.empty_cache()
     return output
+
+
+def inference_runtime_identity(run_dir: str | Path, device: str,
+                               batch: int) -> dict:
+    """Describe the predictor whose scores feed calibration and certification."""
+    import torch
+    from .certify import load_model
+
+    if batch <= 0:
+        raise ValueError("inference batch must be positive")
+    model, _, checkpoint, run, _ = load_model(run_dir, device)
+    try:
+        return {
+            "device": device,
+            "batch": batch,
+            "max_len": int(checkpoint["config"]["max_len"]),
+            "model_dtype": str(next(model.parameters()).dtype),
+            "attention_implementation": getattr(
+                model.backbone.config, "_attn_implementation", None,
+            ),
+            "tokenizer_fingerprint": run["spec"]["tokenizer_fingerprint"],
+            "model_config_fingerprint": run["spec"][
+                "model_config_fingerprint"
+            ],
+            "software": {
+                "python": platform.python_version(),
+                "torch": torch.__version__,
+                "transformers": package_metadata.version("transformers"),
+                "numpy": package_metadata.version("numpy"),
+                "scipy": package_metadata.version("scipy"),
+                "scikit-learn": package_metadata.version("scikit-learn"),
+            },
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+        }
+    finally:
+        del model
+        gc.collect()
+        if device == "mps":
+            torch.mps.empty_cache()
+
+
+def validate_frozen_inference(expected: dict, actual: dict) -> None:
+    if actual != expected:
+        differences = sorted(
+            key for key in set(expected) | set(actual)
+            if expected.get(key) != actual.get(key)
+        )
+        raise ValueError(
+            "formal C inference differs from the frozen predictor identity: "
+            + ", ".join(differences)
+        )
 
 
 def _collate_packed(tokenizer, packed: list[tuple[list[int], list[tuple]]]):
@@ -1055,8 +1253,10 @@ def choice_stress_report(model, tokenizer, records: list[dict], device: str,
                 aligned[original_index] = probabilities[new_index]
             baseline = base_probabilities[unit_index]
             permutation_values[unit_index].append({
-                "agreement": int(base_logits[unit_index].argmax()
-                                 == logits[torch.tensor(order).argsort()].argmax()),
+                "agreement": int(
+                    order[int(logits.argmax())]
+                    == int(base_logits[unit_index].argmax())
+                ),
                 "tv": float(0.5 * (baseline - aligned).abs().sum()),
             })
         permutation_rows = []
@@ -1180,13 +1380,13 @@ def _time_operations(operations: list, warmup: int, device: str) -> list[float]:
 def latency_report(model, tokenizer, predictions: list[dict], device: str,
                    max_len: int, inference_batch: int, seed: int,
                    max_records: int, warmup: int,
-                   repetitions: int, independent_runs: int) -> dict:
+                   repetitions: int, repeated_blocks: int) -> dict:
     """Measure model-only and packing-inclusive latency on a frozen workload."""
     import torch
     from .model import collate, pack_question
 
     if (inference_batch <= 0 or max_records <= 0 or warmup < 0
-            or repetitions <= 0 or independent_runs <= 0):
+            or repetitions <= 0 or repeated_blocks <= 0):
         raise ValueError("latency configuration contains a nonpositive count")
     units = independent_formal_units(predictions)
     eligible = [
@@ -1268,7 +1468,7 @@ def latency_report(model, tokenizer, predictions: list[dict], device: str,
     for requested_batch in sorted({1, inference_batch}):
         batch_size = min(requested_batch, len(selected))
         scopes = {"model_only": [], "packing_and_model": []}
-        for run_index in range(independent_runs):
+        for run_index in range(repeated_blocks):
             trial_count = warmup + repetitions
             scheduled = []
             for trial in range(trial_count):
@@ -1330,7 +1530,7 @@ def latency_report(model, tokenizer, predictions: list[dict], device: str,
             flattened = [value for samples in run_samples for value in samples]
             results[str(batch_size)][scope] = {
                 "aggregate": _latency_distribution(flattened, batch_size),
-                "independent_runs": [
+                "repeated_blocks": [
                     _latency_distribution(samples, batch_size)
                     for samples in run_samples
                 ],
@@ -1353,14 +1553,14 @@ def latency_report(model, tokenizer, predictions: list[dict], device: str,
         "selection": "predeclared strata followed by digest-selected mixture",
         "warmup_trials": warmup,
         "measured_trials": repetitions,
-        "independent_runs": independent_runs,
+        "repeated_blocks": repeated_blocks,
         "timed_scopes": {
             "model_only": "pretokenized and resident input tensors plus model",
             "packing_and_model": (
                 "tokenization, dynamic collation, device transfer, and model"
             ),
             "excluded": "checkpoint loading and HTTP transport",
-            "order": "alternated between independent runs",
+            "order": "alternated between repeated blocks",
         },
         "request_semantics": (
             "each batch entry is one independent question; this is not an HTTP "
@@ -1456,7 +1656,7 @@ def independent_formal_units(predictions: list[dict]) -> list[dict]:
     """Choose one deterministic question per parent and formal cell."""
     chosen = {}
     for prediction in predictions:
-        key = (formal_cell(prediction), prediction["meta"]["parent_id"])
+        key = (formal_cell(prediction), frozen_parent_key(prediction["meta"]))
         identity = prediction["meta"]["record_sha256"]
         current = chosen.get(key)
         if current is None or identity < current["meta"]["record_sha256"]:
@@ -1504,7 +1704,19 @@ def conformal_by_cell(predictions: list[dict], temperature: float,
 def _write_prediction_file(path: Path, predictions: list[dict]) -> dict:
     if path.exists():
         raise FileExistsError(f"refusing to overwrite predictions {path}")
-    _write_jsonl(path, predictions)
+    temporary = path.with_name(path.name + f".tmp-{uuid.uuid4().hex}")
+    try:
+        _write_jsonl(temporary, predictions)
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except BaseException:
+        if temporary.exists():
+            temporary.unlink()
+        raise
     return {
         "sha256": file_sha256(path),
         "bytes": path.stat().st_size,
@@ -1513,13 +1725,80 @@ def _write_prediction_file(path: Path, predictions: list[dict]) -> dict:
     }
 
 
+def load_or_create_prediction_snapshot(
+    plan_dir: Path,
+    binding: dict,
+    producer,
+) -> tuple[list[dict], dict]:
+    """Publish C logits once and reuse them after later-stage failures."""
+    prediction_path = plan_dir / "predictions-C.jsonl"
+    metadata_path = plan_dir / "predictions-C.meta.json"
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text())
+        expected = metadata.get("snapshot_sha256")
+        unsigned = dict(metadata)
+        unsigned.pop("snapshot_sha256", None)
+        if expected != digest_value(unsigned):
+            raise ValueError("C prediction snapshot digest mismatch")
+        if metadata.get("binding") != binding:
+            raise ValueError("C prediction snapshot binding mismatch")
+        descriptor = metadata.get("predictions", {})
+        if (not prediction_path.is_file()
+                or prediction_path.stat().st_size != descriptor.get("bytes")
+                or file_sha256(prediction_path) != descriptor.get("sha256")):
+            raise ValueError("C prediction file differs from its snapshot")
+        with prediction_path.open(encoding="utf-8") as handle:
+            predictions = [json.loads(line) for line in handle if line.strip()]
+        if (len(predictions) != descriptor.get("records")
+                or sum(item["status"] == "ok" for item in predictions)
+                != descriptor.get("accepted")):
+            raise ValueError("C prediction snapshot counts differ")
+        return predictions, metadata
+    if prediction_path.exists():
+        raise ValueError("unbound C prediction file requires investigation")
+    predictions = producer()
+    descriptor = _write_prediction_file(prediction_path, predictions)
+    metadata = {
+        "version": 1,
+        "status": "frozen",
+        "binding": binding,
+        "predictions": descriptor,
+    }
+    metadata["snapshot_sha256"] = digest_value(metadata)
+    _atomic_json(metadata_path, metadata)
+    return predictions, metadata
+
+
+def load_or_compute_bound_report(path: Path, binding: dict, producer):
+    """Atomically persist a report that can be resumed independently."""
+    if path.exists():
+        artifact = json.loads(path.read_text())
+        expected = artifact.get("artifact_sha256")
+        unsigned = dict(artifact)
+        unsigned.pop("artifact_sha256", None)
+        if expected != digest_value(unsigned):
+            raise ValueError(f"bound artifact digest mismatch: {path.name}")
+        if artifact.get("binding") != binding:
+            raise ValueError(f"bound artifact binding mismatch: {path.name}")
+        return artifact["report"], artifact
+    artifact = {
+        "version": 1,
+        "status": "complete",
+        "binding": binding,
+        "report": producer(),
+    }
+    artifact["artifact_sha256"] = digest_value(artifact)
+    _atomic_json(path, artifact)
+    return artifact["report"], artifact
+
+
 def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
                batch: int, alpha: float, thresholds: list[float],
                confidence: float = 0.95, stress_seed: int = 20260921,
                permutations: int = 3, removals_per_record: int = 1,
                latency_records: int = 64, latency_warmup: int = 30,
                latency_repetitions: int = 200,
-               latency_independent_runs: int = 3) -> dict:
+               latency_repeated_blocks: int = 3) -> dict:
     from .calibrate import save_temperature_artifact
     from .checkpoint import load_completed_checkpoint
 
@@ -1535,7 +1814,7 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
         raise ValueError("selective thresholds must be unique values in [0, 1]")
     if (permutations <= 0 or removals_per_record <= 0
             or latency_records <= 0 or latency_warmup < 0
-            or latency_repetitions <= 0 or latency_independent_runs <= 0):
+            or latency_repetitions <= 0 or latency_repeated_blocks <= 0):
         raise ValueError("stress and latency counts must be positive")
     plan = load_plan(plan_dir)
     _, run, manifest = load_completed_checkpoint(run_dir)
@@ -1547,6 +1826,7 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
     role_b = load_role(plan_dir, "B", plan)
     predictions_a = infer_role(run_dir, role_a, device, batch)
     predictions_b = infer_role(run_dir, role_b, device, batch)
+    inference_identity = inference_runtime_identity(run_dir, device, batch)
     temperature = fit_source_balanced_temperature(predictions_a)
     conformal = conformal_by_cell(predictions_b, temperature, alpha)
     a_file = _write_prediction_file(
@@ -1562,21 +1842,21 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
     family_size = len(formal_cells) * len(thresholds)
     simultaneous_confidence = 1.0 - (1.0 - confidence) / family_size
     current = manifest["current"]
+    amendment = plan.get("_protocol_amendment")
     policy = {
         "version": 1,
         "status": "frozen",
         "plan_sha256": plan["plan_sha256"],
+        "plan_amendment_sha256": (
+            amendment["amendment_sha256"] if amendment else None
+        ),
         "run": {
             "run_id": run["run_id"],
             "spec_sha256": run["spec_sha256"],
             "generation": current["generation"],
             "checkpoint_sha256": current["sha256"],
         },
-        "inference": {
-            "max_len": run["spec"]["config"]["max_len"],
-            "device_used_for_fit": device,
-            "batch_used_for_fit": batch,
-        },
+        "inference": inference_identity,
         "temperature": {
             "value": temperature,
             "objective": "source-balanced soft-target cross-entropy",
@@ -1622,11 +1902,11 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
             "max_records": latency_records,
             "warmup_trials": latency_warmup,
             "measured_trials": latency_repetitions,
-            "independent_runs": latency_independent_runs,
+            "repeated_blocks": latency_repeated_blocks,
             "batch_sizes": sorted({1, batch}),
             "modes": ["model_only", "packing_and_model"],
         },
-        "code": plan["code"],
+        "code": amendment["code"] if amendment else plan["code"],
     }
     policy["policy_sha256"] = digest_value(policy)
     _atomic_json(policy_path, policy)
@@ -1652,6 +1932,12 @@ def load_policy(plan_dir: str | Path, plan: dict) -> dict:
         raise ValueError("frozen policy digest mismatch")
     if policy.get("plan_sha256") != plan["plan_sha256"]:
         raise ValueError("frozen policy belongs to another plan")
+    amendment = plan.get("_protocol_amendment")
+    expected_amendment = (
+        amendment["amendment_sha256"] if amendment else None
+    )
+    if policy.get("plan_amendment_sha256") != expected_amendment:
+        raise ValueError("frozen policy belongs to another protocol amendment")
     return policy
 
 
@@ -1719,11 +2005,13 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
     from sklearn.metrics import f1_score
 
     nll, brier_histogram, brier_annotation = [], [], []
-    correct, confidences, hard_labels, predicted_labels = [], [], [], []
+    correct, confidences, annotation_top_outcomes = [], [], []
+    hard_labels, predicted_labels = [], []
     rps, expected_mae = [], []
     yes_probabilities, yes_targets = [], []
     ordinal_thresholds = defaultdict(lambda: ([], []))
     option_counts = set()
+    option_ontologies = set()
     clustered = defaultdict(lambda: defaultdict(list))
     accepted = [item for item in predictions if item["status"] == "ok"]
     for prediction in accepted:
@@ -1733,9 +2021,6 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
         probabilities = log_probabilities.exp()
         label = int(prediction["record"]["label"])
         predicted = int(probabilities.argmax())
-        one_hot = functional.one_hot(
-            torch.tensor(label), logits.numel()
-        ).to(torch.float64)
         nll.append(float(-(target * log_probabilities).sum()))
         brier_histogram.append(float(((probabilities - target) ** 2).sum()))
         brier_annotation.append(float(
@@ -1744,10 +2029,12 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
         ))
         correct.append(float(predicted == label))
         confidences.append(float(probabilities.max()))
+        annotation_top_outcomes.append(float(target[predicted]))
         hard_labels.append(label)
         predicted_labels.append(predicted)
         option_counts.add(logits.numel())
-        parent = prediction["meta"]["parent_id"]
+        option_ontologies.add(digest_value(prediction["record"]["options"]))
+        parent = frozen_parent_key(prediction["meta"])
         clustered["nll"][parent].append(nll[-1])
         clustered["brier_histogram"][parent].append(brier_histogram[-1])
         clustered["brier_annotation"][parent].append(brier_annotation[-1])
@@ -1777,7 +2064,17 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
             "status": "no_usable_records", "submitted": len(predictions),
             "n": 0, "rejected": len(predictions),
         }
-    top_reliability = reliability_bins(confidences, correct)
+    if len(option_ontologies) == 1:
+        macro_f1 = float(f1_score(
+            hard_labels, predicted_labels,
+            labels=list(range(next(iter(option_counts)))),
+            average="macro", zero_division=0,
+        ))
+    else:
+        macro_f1 = {
+            "status": "not_applicable",
+            "reason": "records do not share one ordered label ontology",
+        }
     result = {
         "status": "ok",
         "submitted": len(predictions),
@@ -1788,18 +2085,17 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
         "brier_histogram": _mean(brier_histogram),
         "brier_annotation": _mean(brier_annotation),
         "accuracy": _mean(correct),
-        "macro_f1": float(f1_score(
-            hard_labels, predicted_labels,
-            labels=(
-                list(range(next(iter(option_counts))))
-                if len(option_counts) == 1
-                else sorted(set(hard_labels) | set(predicted_labels))
-            ),
-            average="macro", zero_division=0,
-        )),
+        "macro_f1": macro_f1,
         "mean_confidence": _mean(confidences),
-        "confidence_bias": _mean(confidences) - _mean(correct),
-        "top_label_reliability": top_reliability,
+        "majority_or_consensus_confidence_bias": (
+            _mean(confidences) - _mean(correct)
+        ),
+        "majority_or_consensus_top_label_reliability": reliability_bins(
+            confidences, correct,
+        ),
+        "annotation_target_top_label_reliability": reliability_bins(
+            confidences, annotation_top_outcomes,
+        ),
         "option_counts": sorted(option_counts),
         "cluster_bootstrap_ci95": {
             metric: interval
@@ -1851,13 +2147,16 @@ def grouped_metric_report(predictions: list[dict], temperature: float) -> dict:
         }
     macro_fields = (
         "nll", "brier_histogram", "brier_annotation", "accuracy",
-        "macro_f1", "confidence_bias", "ranked_probability_score",
+        "macro_f1", "majority_or_consensus_confidence_bias",
+        "ranked_probability_score",
         "expected_index_mae",
     )
     report["source_macro"] = {
         field: _mean([
             metrics[field] for metrics in report["source"].values()
-            if metrics.get("status") == "ok" and field in metrics
+            if (metrics.get("status") == "ok" and field in metrics
+                and isinstance(metrics[field], (int, float))
+                and not isinstance(metrics[field], bool))
         ])
         for field in macro_fields
     }
@@ -1938,7 +2237,7 @@ def paired_temperature_differences(predictions: list[dict],
                 + 2.0 * (raw_probability * target).sum()
             ),
         }
-        parent = prediction["meta"]["parent_id"]
+        parent = frozen_parent_key(prediction["meta"])
         for metric, value in values.items():
             differences[metric].append(value)
             clustered[metric][parent].append(value)
@@ -2098,30 +2397,69 @@ def evaluate_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
             or current["generation"] != expected_run["generation"]
             or current["sha256"] != expected_run["checkpoint_sha256"]):
         raise ValueError("completed checkpoint does not match frozen policy")
+    actual_inference = inference_runtime_identity(run_dir, device, batch)
+    validate_frozen_inference(policy["inference"], actual_inference)
     role_c = load_role(plan_dir, "C", plan)
-    predictions = infer_role(run_dir, role_c, device, batch)
-    prediction_file = _write_prediction_file(
-        plan_dir / "predictions-C.jsonl", predictions,
+    snapshot_binding = {
+        "plan_sha256": plan["plan_sha256"],
+        "plan_amendment_sha256": policy.get("plan_amendment_sha256"),
+        "policy_sha256": policy["policy_sha256"],
+        "run": expected_run,
+        "inference": policy["inference"],
+        "role_file": plan["files"]["C.jsonl"],
+    }
+    predictions, prediction_snapshot = load_or_create_prediction_snapshot(
+        plan_dir,
+        snapshot_binding,
+        lambda: infer_role(run_dir, role_c, device, batch),
     )
+    prediction_file = {
+        **prediction_snapshot["predictions"],
+        "snapshot_sha256": prediction_snapshot["snapshot_sha256"],
+    }
     temperature = policy["temperature"]["value"]
     model, tokenizer, checkpoint, _, _ = load_model(run_dir, device)
     stress_policy = policy["stress"]
     latency_policy = policy["latency"]
     try:
-        stress = choice_stress_report(
-            model, tokenizer, role_c, device, batch,
-            int(checkpoint["config"]["max_len"]), temperature,
-            stress_policy["seed"],
-            stress_policy["permutations_per_record"],
-            stress_policy["removals_per_record"],
+        stress_binding = {
+            "prediction_snapshot_sha256": prediction_snapshot[
+                "snapshot_sha256"
+            ],
+            "policy_sha256": policy["policy_sha256"],
+            "inference": policy["inference"],
+            "stress_policy": stress_policy,
+        }
+        stress, stress_artifact = load_or_compute_bound_report(
+            plan_dir / "choice-stress.json",
+            stress_binding,
+            lambda: choice_stress_report(
+                model, tokenizer, role_c, device, batch,
+                int(checkpoint["config"]["max_len"]), temperature,
+                stress_policy["seed"],
+                stress_policy["permutations_per_record"],
+                stress_policy["removals_per_record"],
+            ),
         )
-        latency = latency_report(
-            model, tokenizer, predictions, device,
-            int(checkpoint["config"]["max_len"]), batch,
-            latency_policy["seed"], latency_policy["max_records"],
-            latency_policy["warmup_trials"],
-            latency_policy["measured_trials"],
-            latency_policy["independent_runs"],
+        latency_binding = {
+            "prediction_snapshot_sha256": prediction_snapshot[
+                "snapshot_sha256"
+            ],
+            "policy_sha256": policy["policy_sha256"],
+            "inference": policy["inference"],
+            "latency_policy": latency_policy,
+        }
+        latency, latency_artifact = load_or_compute_bound_report(
+            plan_dir / "latency.json",
+            latency_binding,
+            lambda: latency_report(
+                model, tokenizer, predictions, device,
+                int(checkpoint["config"]["max_len"]), batch,
+                latency_policy["seed"], latency_policy["max_records"],
+                latency_policy["warmup_trials"],
+                latency_policy["measured_trials"],
+                latency_policy["repeated_blocks"],
+            ),
         )
     finally:
         del model
@@ -2155,6 +2493,16 @@ def evaluate_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
         ),
         "choice_stress": stress,
         "latency": latency,
+        "resumable_artifacts": {
+            "choice_stress": {
+                "path": "choice-stress.json",
+                "sha256": stress_artifact["artifact_sha256"],
+            },
+            "latency": {
+                "path": "latency.json",
+                "sha256": latency_artifact["artifact_sha256"],
+            },
+        },
         "statistical_policy": {
             "formal_unit": (
                 "one deterministic question per parent and formal cell"
@@ -2180,6 +2528,8 @@ def main() -> None:
     prepare_parser.add_argument("--max-parents", type=int, default=1600)
     prepare_parser.add_argument("--sources")
     prepare_parser.add_argument("--seed", type=int, default=20260920)
+    amend_parser = commands.add_parser("amend")
+    amend_parser.add_argument("--plan", required=True)
     fit_parser = commands.add_parser("fit")
     fit_parser.add_argument("--plan", required=True)
     fit_parser.add_argument("--run-dir", required=True)
@@ -2193,7 +2543,10 @@ def main() -> None:
     fit_parser.add_argument("--latency-records", type=int, default=64)
     fit_parser.add_argument("--latency-warmup", type=int, default=30)
     fit_parser.add_argument("--latency-repetitions", type=int, default=200)
-    fit_parser.add_argument("--latency-independent-runs", type=int, default=3)
+    fit_parser.add_argument(
+        "--latency-repeated-blocks", "--latency-independent-runs",
+        dest="latency_repeated_blocks", type=int, default=3,
+    )
     evaluate_parser = commands.add_parser("evaluate")
     evaluate_parser.add_argument("--plan", required=True)
     evaluate_parser.add_argument("--run-dir", required=True)
@@ -2217,6 +2570,14 @@ def main() -> None:
             "plan_sha256": plan["plan_sha256"],
             "files": plan["files"],
         }, indent=2))
+    elif args.command == "amend":
+        amendment = amend_protocol(args.plan)
+        print(json.dumps({
+            "base_plan_sha256": amendment["base_plan_sha256"],
+            "amendment_sha256": amendment["amendment_sha256"],
+            "membership": amendment["membership"],
+            "parent_audit": amendment["parent_audit"],
+        }, indent=2))
     elif args.command == "fit":
         thresholds = [
             float(value) for value in args.thresholds.split(",") if value
@@ -2229,7 +2590,7 @@ def main() -> None:
             latency_records=args.latency_records,
             latency_warmup=args.latency_warmup,
             latency_repetitions=args.latency_repetitions,
-            latency_independent_runs=args.latency_independent_runs,
+            latency_repeated_blocks=args.latency_repeated_blocks,
         )
         print(json.dumps({
             "policy_sha256": policy["policy_sha256"],

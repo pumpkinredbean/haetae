@@ -117,11 +117,11 @@ def load_frozen_split(
     path = suite / filename
     if file_sha256(path) != descriptor["sha256"]:
         raise ValueError(f"suite digest mismatch: {filename}")
-    requests = [
-        normalize_request(json.loads(line))
-        for line in path.read_text().splitlines()
-        if line
-    ]
+    with path.open(encoding="utf-8") as handle:
+        requests = [
+            normalize_request(json.loads(line))
+            for line in handle if line.strip()
+        ]
     if len(requests) != descriptor["records"]:
         raise ValueError(f"suite record count mismatch: {filename}")
     questions = sum(len(request["questions"]) for request in requests)

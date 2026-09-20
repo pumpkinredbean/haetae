@@ -7,6 +7,7 @@ from haetae.calibrate import (
     certify_selective_risk,
     conformal_threshold,
     fit_temperature,
+    prediction_set,
 )
 
 
@@ -39,6 +40,13 @@ class CalibrationValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             binomial_upper_bound(0, 0, confidence=1.0)
         self.assertEqual(binomial_upper_bound(0, 0), 1.0)
+
+    def test_prediction_set_keeps_inclusive_floating_point_boundary(self):
+        probabilities = torch.full((9,), 1 / 9, dtype=torch.float64)
+        threshold = conformal_threshold(
+            [probabilities] * 20, [0] * 20, alpha=0.5,
+        )
+        self.assertEqual(prediction_set(probabilities, threshold), list(range(9)))
 
 
 if __name__ == "__main__":
