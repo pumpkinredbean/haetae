@@ -303,6 +303,17 @@ tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 - the resumed tmux server later disappeared immediately after generation 71 at step 3,500. Again there was no writer, held lock, checkpoint error, or disk error. Automatic resume validated generation 71 and continued at step 3,525.
 - generation 79 completed the run at step 3,894 with SHA-256 `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`, epoch 1, cursor 15,572, and zero skipped batches. The completed loader revalidated the checkpoint body, run specification, manifest identity, target step, optimizer state, and digests.
 
+## Development evaluation
+
+The baseline evaluation is next and uses only frozen calibration and development files:
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-baseline-dev "zsh -lc 'set -o pipefail; HF_HUB_OFFLINE=1 uv run python -u -m experiments.evaluate_baseline --run runs/v3-micro4 --comparison-plan evaluations/comparison-v1/plan.json --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 4 --out evaluations/baseline-development.json 2>&1 | tee -a evaluate_baseline_development.log'"
+```
+
+After it completes, run the shared-state evaluation in session `haetae-shared-dev`, log `evaluate_shared_development.log`, and output `evaluations/shared-v1-development.json` with batch size 2. Neither evaluator opens a locked test split.
+
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
