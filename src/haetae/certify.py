@@ -35,7 +35,7 @@ def load_model(ckpt_dir, device):
 def collect_logits(model, tok, records, device, max_len, batch):
     from .model import collate
 
-    out = []
+    out = []  # (original_index, logits) — dropped records keep alignment
     for i in range(0, len(records), batch):
         recs = records[i:i + batch]
         b = collate(tok, recs, max_len)
@@ -47,7 +47,7 @@ def collect_logits(model, tok, records, device, max_len, batch):
             b = collate(tok, recs, max_len)
         lg = model(b["input_ids"].to(device), b["attention_mask"].to(device),
                    b["option_pos"].to(device), b["group_ptr"].to(device))
-        out += [l.cpu() for l in lg]
+        out += [(i + k, l.cpu()) for k, l in zip(keep, lg)]
     return out
 
 
@@ -75,25 +75,29 @@ def main():
         if not rows:
             continue
 
-        cal_logits = collect_logits(model, tok, calib, device, args.max_len, args.batch)
-        cal_labels = [r["label"] for r in calib]
+        cal_pairs = collect_logits(model, tok, calib, device, args.max_len, args.batch)
+        cal_logits = [l for _, l in cal_pairs]
+        cal_labels = [calib[i]["label"] for i, _ in cal_pairs]
         T = fit_temperature(cal_logits, cal_labels)
 
         cert_probs = predict(model, tok, cert, device, args.max_len,
                              args.batch, temperature=T)
-        cert_labels = [r["label"] for r in cert]
-        acc = sum(int(p.argmax()) == y for p, y in zip(cert_probs, cert_labels)) / len(cert)
+        kept = [(r, p) for r, p in zip(cert, cert_probs) if p is not None]
+        cert_k = [r for r, _ in kept]
+        cert_p = [p for _, p in kept]
+        cert_labels = [r["label"] for r in cert_k]
+        acc = sum(int(p.argmax()) == y for p, y in zip(cert_p, cert_labels)) / max(1, len(cert_p))
         nll = sum(-float(p[y].clamp_min(1e-9).log())
-                  for p, y in zip(cert_probs, cert_labels)) / len(cert)
+                  for p, y in zip(cert_p, cert_labels)) / max(1, len(cert_p))
         brier = sum(float(((p - F.one_hot(torch.tensor(y), p.numel()).float()) ** 2).sum())
-                    for p, y in zip(cert_probs, cert_labels)) / len(cert)
-        confs = [float(p.max()) for p in cert_probs]
-        corr = [int(p.argmax()) == y for p, y in zip(cert_probs, cert_labels)]
+                    for p, y in zip(cert_p, cert_labels)) / max(1, len(cert_p))
+        confs = [float(p.max()) for p in cert_p]
+        corr = [int(p.argmax()) == y for p, y in zip(cert_p, cert_labels)]
 
-        print(f"\n== {name} (n={len(cert)}, T={T:.3f})")
+        print(f"\n== {name} (n={len(cert_p)}/{len(cert)}, T={T:.3f})")
         print(f"acc {acc:.3f}  nll {nll:.3f}  brier {brier:.3f}  ece {ece(confs, corr):.3f}")
         for t in [float(x) for x in args.thresholds.split(",")]:
-            c = certify_selective_risk(cert_probs, cert_labels, t)
+            c = certify_selective_risk(cert_p, cert_labels, t)
             print(f"  t={t}: accepted {c['accepted']} ({c['coverage']:.0%}), "
                   f"errors {c['errors']}, risk<= {c['risk_upper_bound']:.3f} @95%")
 
