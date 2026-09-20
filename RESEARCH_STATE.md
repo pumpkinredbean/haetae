@@ -424,6 +424,8 @@ The additive MPS-only batch-one confirmation implementation is commit `98e269f2e
 
 Pending actions:
 
+The pre-measurement review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-prerun-v3.zip`, with SHA-256 `efae5b18cb1c373b3521133245685f36e12a51ecb7e5bdb157101bd2f3bc042e` and manifest SHA-256 `e8d2913c1b6a6da6ed06fde8c983e3179533058f4870f95d345e3577a6d6e2c9`. ChatGPT 6 Pro review is pending in the recorded Aside conversation.
+
 1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `98e269f` and the frozen protocol and schedule.
 2. If approved, launch the resumable six-process script in tmux:
 
