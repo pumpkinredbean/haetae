@@ -424,14 +424,13 @@ The additive MPS-only batch-one confirmation implementation is commit `98e269f2e
 
 Pending actions:
 
-The pre-measurement review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-prerun-v3.zip`, with SHA-256 `efae5b18cb1c373b3521133245685f36e12a51ecb7e5bdb157101bd2f3bc042e` and manifest SHA-256 `e8d2913c1b6a6da6ed06fde8c983e3179533058f4870f95d345e3577a6d6e2c9`. ChatGPT 6 Pro review is pending in the recorded Aside conversation.
+The pre-measurement review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-prerun-v3.zip`, with SHA-256 `efae5b18cb1c373b3521133245685f36e12a51ecb7e5bdb157101bd2f3bc042e` and manifest SHA-256 `e8d2913c1b6a6da6ed06fde8c983e3179533058f4870f95d345e3577a6d6e2c9`. ChatGPT 6 Pro verified the archive, commit, frozen bindings, schedule balance, six-process pipeline, synthetic evidence, recovery behavior, and gates without model inference, then returned `BATCH-ONE CONFIRMATION START`.
 
-1. Obtain ChatGPT 6 Pro pre-measurement review of exact commit `98e269f` and the frozen protocol and schedule.
-2. If approved, launch the resumable six-process script in tmux:
+1. Launch the approved resumable six-process script in tmux:
 
 ```bash
 cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-shared-confirmation-v1 "zsh -lc 'set -o pipefail; /Users/minkyu/workspace/haetae/experiments/run_shared_execution_confirmation.zsh 2>&1 | tee -a /Users/minkyu/workspace/haetae/shared_execution_confirmation_v1.log'"
 ```
 
-3. Validate and externally review the complete measured artifacts. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
+2. Validate and externally review the complete measured artifacts. Treat any passing result as warmed steady-state performance. Do not retrain or open either locked test.
