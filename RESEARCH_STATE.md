@@ -12,7 +12,7 @@ Success means a reproducible checkpoint, evaluation on named held-out datasets, 
 
 - Repository: https://github.com/pumpkinredbean/haetae
 - Branch: `main`
-- Last pushed commit before checkpoint-resume work: `1f3eab2`
+- Checkpoint implementation review commit: `33006e1`
 - Aside conversation: `Clean Room Jev Reproduction`
 - Aside URL: https://chatgpt.com/c/6aaeba00-b670-83e8-9c29-3370b3c7945d
 - Review model: ChatGPT 6 Pro
@@ -45,7 +45,15 @@ Success means a reproducible checkpoint, evaluation on named held-out datasets, 
 
 The first long run reached step 400/3000 but had no periodic checkpoint and was lost when the execution session disappeared. `runs/v1/model.pt` predates that run and must not be treated as its result.
 
-Checkpoint-resume work is now being added to `src/haetae/train.py`: atomic `runs/v1/checkpoint.pt`, `runs/v1/progress.json`, model/optimizer/scheduler/config/RNG state, SIGTERM/SIGINT save, `--save-every 50`, and `--resume auto`.
+Checkpoint-resume work is implemented in `src/haetae/train.py`: atomic `runs/v1/checkpoint.pt`, `runs/v1/progress.json`, model/optimizer/scheduler/config/RNG state, SIGTERM/SIGINT save, `--save-every 50`, and `--resume auto`.
+
+Verified on the real training path:
+
+- periodic checkpoint written at step 50;
+- SIGTERM received during training and produced an atomic step-58 checkpoint;
+- tmux session exited cleanly with `stopped with resumable checkpoint`;
+- the same command was relaunched with `--resume auto`; resume confirmation is pending after dataset loading;
+- an independent tiny-model round-trip restored weights, optimizer/scheduler state, step, skipped count, and progress metadata.
 
 ## Long-running command
 
@@ -61,10 +69,8 @@ tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train
 
 ## Next actions
 
-1. Validate the new checkpoint save/resume path with a small deterministic test.
-2. Commit and push checkpoint-resume code plus this state file.
-3. Send the exact new commit to 6 Pro for direct GitHub review.
-4. Start the full run with `--resume auto`; verify at least two periodic checkpoints and one real restart.
-5. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
-6. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
-7. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
+1. Confirm the restarted job logs `resumed ... at step 58`, then verify a later periodic checkpoint.
+2. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
+3. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
+4. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
+5. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
