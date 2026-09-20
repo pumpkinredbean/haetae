@@ -44,6 +44,9 @@ DESIGN_PATH = Path(__file__).with_name("shared_execution_protocol.json")
 ARMS = ("P", "B", "S")
 SUITES = ("decision", "transfer", "korean")
 SCOPES = ("pretokenized_forward", "complete_request")
+PROCESS_PID = os.getpid()
+PROCESS_STARTED_UNIX_NS = time.time_ns()
+PROCESS_INSTANCE_ID = uuid.uuid4().hex
 
 
 def canonical_bytes(value) -> bytes:
@@ -173,6 +176,41 @@ def validate_checkpoint_descriptor(run_dir: Path, design: dict) -> tuple[dict, d
     if file_sha256(checkpoint) != current["sha256"]:
         raise ValueError("checkpoint bytes differ from the completed manifest")
     return run, manifest
+
+
+def validate_development_report(
+    path: Path, design: dict, comparison_plan: dict,
+) -> dict:
+    """Bind the fixed temperature to the accepted public-development report."""
+    expected = design["checkpoint"]["development_report"]
+    if file_sha256(path) != expected["file_sha256"]:
+        raise ValueError("development report file digest differs from the protocol")
+    report = json.loads(path.read_text())
+    unsigned = dict(report)
+    recorded_sha = unsigned.pop("report_sha256", None)
+    if recorded_sha != expected["report_sha256"]:
+        raise ValueError("development report digest differs from the protocol")
+    if value_sha256(unsigned) != recorded_sha:
+        raise ValueError("development report content digest is invalid")
+    if report.get("status") != "evaluated":
+        raise ValueError("development report is not complete")
+    if report.get("locked_test_opened") is not False:
+        raise ValueError("development report does not record a closed locked test")
+    run = report.get("run", {})
+    for key in ("run_id", "spec_sha256", "generation", "checkpoint_sha256"):
+        if run.get(key) != design["checkpoint"][key]:
+            raise ValueError(f"development report {key} differs from the protocol")
+    if report.get("comparison_plan_sha256") != comparison_plan["plan_sha256"]:
+        raise ValueError("development report comparison plan differs")
+    temperature = report.get("temperature", {})
+    if temperature.get("value") != design["checkpoint"]["temperature"]:
+        raise ValueError("development report temperature differs from the protocol")
+    return {
+        "path": str(path.resolve()),
+        "file_sha256": expected["file_sha256"],
+        "report_sha256": recorded_sha,
+        "temperature": temperature["value"],
+    }
 
 
 def request_identity(suite: str, request: dict) -> str:
@@ -355,6 +393,64 @@ def selection_rank(row: dict, seed: int, panel: str) -> str:
     })
 
 
+def distinct_parent_rows(
+    rows: list[dict], limit: int, seed: int, panel: str,
+) -> list[dict]:
+    """Select at most one deterministic workload from each evaluation parent."""
+    by_parent = defaultdict(list)
+    for row in rows:
+        by_parent[row["parent_id"]].append(row)
+    representatives = [
+        min(members, key=lambda row: selection_rank(row, seed, panel + "-member"))
+        for members in by_parent.values()
+    ]
+    representatives.sort(key=lambda row: selection_rank(row, seed, panel))
+    if len(representatives) < limit:
+        raise ValueError(
+            f"performance cell {panel} has {len(representatives)} distinct parents; "
+            f"the protocol requires {limit}"
+        )
+    return representatives[:limit]
+
+
+def longest_diagnostic_rows(
+    rows: list[dict], limit: int, seed: int, panel: str,
+) -> list[dict]:
+    """Cover the highest-option case, then fill by packed length using distinct parents."""
+    if not rows or limit <= 0:
+        return []
+    highest_option = max(
+        rows,
+        key=lambda row: (
+            max(row["candidate_counts"]), row["packed_length"],
+            selection_rank(row, seed, panel + "-option"),
+        ),
+    )
+    by_parent = defaultdict(list)
+    for row in rows:
+        if row["parent_id"] == highest_option["parent_id"]:
+            continue
+        by_parent[row["parent_id"]].append(row)
+    representatives = [
+        max(
+            members,
+            key=lambda row: (
+                row["packed_length"], max(row["candidate_counts"]),
+                selection_rank(row, seed, panel + "-member"),
+            ),
+        )
+        for members in by_parent.values()
+    ]
+    ordered = sorted(
+        representatives,
+        key=lambda row: (
+            -row["packed_length"], -max(row["candidate_counts"]),
+            row["workload_id"],
+        ),
+    )
+    return [highest_option, *ordered[: max(0, limit - 1)]]
+
+
 def assign_performance_panels(rows: list[dict], design: dict) -> None:
     selection = design["workload_selection"]
     seed = selection["seed"]
@@ -363,31 +459,32 @@ def assign_performance_panels(rows: list[dict], design: dict) -> None:
         cells[(row["suite"], row["question_count"])].append(row)
     for (suite, count), members in cells.items():
         if count > 1 and suite in selection["primary_multi_question_suites"]:
-            ordered = sorted(
-                members, key=lambda row: selection_rank(
-                    row, seed, "multi-primary",
-                ),
+            ordered = distinct_parent_rows(
+                members,
+                selection["hash_selected_per_multi_question_cell"],
+                seed,
+                f"multi-primary:{suite}:{count}",
             )
-            for row in ordered[:selection["hash_selected_per_multi_question_cell"]]:
+            for row in ordered:
                 row["performance_panels"].append("multi_primary_pool")
         if count == 1 and suite in selection["single_question_control_suites"]:
-            ordered = sorted(
-                members, key=lambda row: selection_rank(
-                    row, seed, "single-control",
-                ),
+            ordered = distinct_parent_rows(
+                members,
+                selection["hash_selected_single_question_controls_per_suite"],
+                seed,
+                f"single-control:{suite}",
             )
-            for row in ordered[
-                :selection["hash_selected_single_question_controls_per_suite"]
-            ]:
+            for row in ordered:
                 row["performance_panels"].append("single_control_pool")
-        longest = sorted(
+        longest = longest_diagnostic_rows(
             members,
-            key=lambda row: (
-                -row["packed_length"], -max(row["candidate_counts"]),
-                row["workload_id"],
-            ),
+            min(selection["longest_diagnostics_per_cell"], len({
+                row["parent_id"] for row in members
+            })),
+            seed,
+            f"longest:{suite}:{count}",
         )
-        for row in longest[:selection["longest_diagnostics_per_cell"]]:
+        for row in longest:
             row["performance_panels"].append("longest_diagnostic")
     for row in rows:
         row["performance_panels"].sort()
@@ -427,7 +524,11 @@ def batch_schedule(ids: list[str], rows_by_id: dict[str, dict], batch: int) -> l
         values = grouped[suite]
         for start in range(0, len(values), batch):
             chunk = values[start:start + batch]
-            result.append({"suite": suite, "workload_ids": chunk})
+            result.append({
+                "suite": suite,
+                "workload_ids": chunk,
+                "parent_ids": [rows_by_id[value]["parent_id"] for value in chunk],
+            })
     return result
 
 
@@ -443,41 +544,56 @@ def build_schedules(rows: list[dict], design: dict) -> dict:
         row for row in rows
         if "single_control_pool" in row["performance_panels"]
     ]
-    repetitions = {}
-    for repetition in range(timing["fresh_process_repetitions"]):
-        rep_seed = seed + repetition * 1009
-        populations = {}
-        for name, pool, warmup, measured, strata in (
-            (
-                "multi_primary", multi,
-                timing["primary_warmup_requests"],
-                timing["primary_measured_requests"],
-                ("suite", "question_count"),
-            ),
-            (
-                "single_control", controls,
-                timing["single_control_warmup_requests"],
-                timing["single_control_measured_requests"],
-                ("suite",),
-            ),
-        ):
-            warmup_ids = balanced_sequence(
-                pool, warmup, rep_seed, f"{name}-warmup", strata,
-            )
-            measured_ids = balanced_sequence(
-                pool, measured, rep_seed, f"{name}-measured", strata,
-            )
-            populations[name] = {}
-            for batch in timing["request_batch_sizes"]:
-                populations[name][str(batch)] = {
-                    "warmup": batch_schedule(warmup_ids, rows_by_id, batch),
-                    "measured": batch_schedule(measured_ids, rows_by_id, batch),
-                }
-        repetitions[str(repetition)] = populations
+    populations = {}
+    for name, pool, warmup, measured, strata in (
+        (
+            "multi_primary", multi,
+            timing["primary_warmup_requests"],
+            timing["primary_measured_requests"],
+            ("suite", "question_count"),
+        ),
+        (
+            "single_control", controls,
+            timing["single_control_warmup_requests"],
+            timing["single_control_measured_requests"],
+            ("suite",),
+        ),
+    ):
+        warmup_ids = balanced_sequence(
+            pool, warmup, seed, f"{name}-warmup", strata,
+        )
+        measured_ids = balanced_sequence(
+            pool, measured, seed, f"{name}-measured", strata,
+        )
+        populations[name] = {}
+        for batch in timing["request_batch_sizes"]:
+            populations[name][str(batch)] = {
+                "warmup": batch_schedule(warmup_ids, rows_by_id, batch),
+                "measured": batch_schedule(measured_ids, rows_by_id, batch),
+            }
+    repetitions = {
+        str(repetition): copy.deepcopy(populations)
+        for repetition in range(timing["fresh_process_repetitions"])
+    }
+    memory_design = design["memory"]
+    memory_ids = balanced_sequence(
+        multi,
+        memory_design["steady_state_requests"],
+        seed,
+        "memory-steady-state",
+        ("suite", "question_count"),
+    )
     schedules = {
         "version": 1,
         "selection_seed": seed,
         "repetitions": repetitions,
+        "memory": {
+            "requests": len(memory_ids),
+            "request_batch_size": memory_design["request_batch_size"],
+            "batches": batch_schedule(
+                memory_ids, rows_by_id, memory_design["request_batch_size"],
+            ),
+        },
     }
     schedules["schedules_sha256"] = value_sha256(schedules)
     return schedules
@@ -493,6 +609,76 @@ def suite_descriptor(path: Path, manifest: dict) -> dict:
         "development_records": development["records"],
         "development_questions": development["questions"],
     }
+
+
+def validate_schedule_batches(
+    batches: list[dict], rows_by_id: dict[str, dict], expected_requests: int,
+    maximum_batch_size: int,
+) -> None:
+    observed = 0
+    for batch in batches:
+        workload_ids = batch.get("workload_ids")
+        parent_ids = batch.get("parent_ids")
+        if (
+            not isinstance(workload_ids, list) or not workload_ids
+            or len(workload_ids) > maximum_batch_size
+        ):
+            raise ValueError("frozen schedule has an invalid request batch")
+        if any(workload_id not in rows_by_id for workload_id in workload_ids):
+            raise ValueError("frozen schedule contains an unknown workload")
+        if batch.get("suite") is None or any(
+            rows_by_id[workload_id]["suite"] != batch["suite"]
+            for workload_id in workload_ids
+        ):
+            raise ValueError("frozen schedule mixes workload suites")
+        expected_parents = [
+            rows_by_id[workload_id]["parent_id"] for workload_id in workload_ids
+        ]
+        if parent_ids != expected_parents:
+            raise ValueError("frozen schedule parent identities differ")
+        observed += len(workload_ids)
+    if observed != expected_requests:
+        raise ValueError("frozen schedule request count differs")
+
+
+def validate_frozen_schedules(schedules: dict, rows: list[dict], design: dict) -> None:
+    rows_by_id = {row["workload_id"]: row for row in rows}
+    timing = design["timing"]
+    repetitions = schedules.get("repetitions", {})
+    expected_keys = {
+        str(index) for index in range(timing["fresh_process_repetitions"])
+    }
+    if set(repetitions) != expected_keys:
+        raise ValueError("frozen timing repetition inventory differs")
+    reference = repetitions["0"]
+    if any(value != reference for value in repetitions.values()):
+        raise ValueError("frozen timing request schedules differ across repetitions")
+    for population, warmup, measured in (
+        ("multi_primary", timing["primary_warmup_requests"], timing["primary_measured_requests"]),
+        ("single_control", timing["single_control_warmup_requests"], timing["single_control_measured_requests"]),
+    ):
+        by_batch = reference.get(population, {})
+        if set(by_batch) != {str(value) for value in timing["request_batch_sizes"]}:
+            raise ValueError("frozen timing batch inventory differs")
+        for batch_size in timing["request_batch_sizes"]:
+            schedule = by_batch[str(batch_size)]
+            validate_schedule_batches(
+                schedule["warmup"], rows_by_id, warmup, batch_size,
+            )
+            validate_schedule_batches(
+                schedule["measured"], rows_by_id, measured, batch_size,
+            )
+    memory = schedules.get("memory", {})
+    memory_design = design["memory"]
+    if memory.get("requests") != memory_design["steady_state_requests"]:
+        raise ValueError("frozen memory request count differs")
+    if memory.get("request_batch_size") != memory_design["request_batch_size"]:
+        raise ValueError("frozen memory batch size differs")
+    validate_schedule_batches(
+        memory.get("batches", []), rows_by_id,
+        memory_design["steady_state_requests"],
+        memory_design["request_batch_size"],
+    )
 
 
 def freeze(args) -> dict:
@@ -516,6 +702,9 @@ def freeze(args) -> dict:
     requests, manifests, comparison_plan = load_common_clean_requests(
         Path(args.comparison_plan).resolve(), suite_paths,
     )
+    development_report = validate_development_report(
+        Path(args.development_report).resolve(), design, comparison_plan,
+    )
     tokenizer = AutoTokenizer.from_pretrained(run_dir, local_files_only=True)
     delimiters = add_delimiters(tokenizer)
     if tokenizer_fingerprint(tokenizer) != run["spec"]["tokenizer_fingerprint"]:
@@ -532,6 +721,7 @@ def freeze(args) -> dict:
         raise ValueError("workload identities are not unique")
     assign_performance_panels(rows, design)
     schedules = build_schedules(rows, design)
+    validate_frozen_schedules(schedules, rows, design)
     workload_data = jsonl_bytes(rows)
     protocol = {
         "version": 1,
@@ -555,6 +745,7 @@ def freeze(args) -> dict:
             "file_sha256": file_sha256(args.comparison_plan),
             "plan_sha256": comparison_plan["plan_sha256"],
         },
+        "development_report": development_report,
         "suites": {
             suite: suite_descriptor(suite_paths[suite], manifests[suite])
             for suite in SUITES
@@ -622,6 +813,7 @@ def load_frozen(output: Path) -> tuple[dict, list[dict], dict, dict]:
         raise ValueError("schedule digest mismatch")
     if schedule_sha != meta["schedules_sha256"]:
         raise ValueError("workload metadata refers to different schedules")
+    validate_frozen_schedules(schedules, rows, protocol["design"])
     repository = Path(__file__).resolve().parents[1]
     current_runner = runner_identity(repository)
     if current_runner["sha256"] != protocol["runner"]["sha256"]:
@@ -825,14 +1017,178 @@ def verify_prepared_against_row(prepared: dict, row: dict) -> None:
         raise ValueError("separate token array differs from the frozen workload")
 
 
-def clean_incomplete_equivalence(path: Path) -> set[str]:
-    if not path.exists():
-        return set()
-    rows = load_jsonl(path)
-    completed = {
-        row["workload_id"] for row in rows if row.get("kind") == "request_complete"
+def artifact_row_binding(
+    protocol: dict, workload_meta: dict, device: str,
+    schedules: dict | None = None,
+) -> dict:
+    binding = {
+        "version": 1,
+        "protocol_sha256": protocol["protocol_sha256"],
+        "workloads_sha256": workload_meta["workloads_file_sha256"],
+        "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
+        "device": device,
     }
-    retained = [row for row in rows if row["workload_id"] in completed]
+    if schedules is not None:
+        binding["schedules_sha256"] = schedules["schedules_sha256"]
+    return binding
+
+
+def validate_row_binding(
+    row: dict, protocol: dict, workload_meta: dict, device: str,
+    schedules: dict | None = None,
+) -> None:
+    expected = artifact_row_binding(protocol, workload_meta, device, schedules)
+    for key, value in expected.items():
+        if row.get(key) != value:
+            raise ValueError(f"artifact row {key} binding differs")
+
+
+def expected_equivalence_inventory(rows: list[dict]) -> dict[tuple, dict]:
+    by_suite = defaultdict(list)
+    for row in rows:
+        by_suite[row["suite"]].append(row)
+    expected = {}
+    for row in rows:
+        workload_id = row["workload_id"]
+        common = {"parent_id": row["parent_id"], "suite": row["suite"]}
+        for index, question_id in enumerate(row["question_ids"]):
+            expected[("base_equivalence", workload_id, question_id)] = {
+                **common, "question_index": index,
+            }
+            if row["question_count"] > 1:
+                for kind in ("question_order_reversal", "sibling_removal"):
+                    expected[(kind, workload_id, question_id)] = common
+        if "longest_diagnostic" in row["performance_panels"]:
+            peers = [
+                candidate for candidate in by_suite[row["suite"]]
+                if candidate["workload_id"] != workload_id
+            ]
+            if peers:
+                replacement = max(
+                    peers,
+                    key=lambda candidate: (
+                        abs(candidate["packed_length"] - row["packed_length"]),
+                        candidate["workload_id"],
+                    ),
+                )
+                expected[(
+                    "unrelated_sibling_replacement", workload_id,
+                    row["question_ids"][0],
+                )] = {
+                    **common,
+                    "neighbor_workload_id": replacement["workload_id"],
+                }
+            for kind, predicate in (
+                ("batch_neighbor_shorter", lambda value: value < row["packed_length"]),
+                ("batch_neighbor_longer", lambda value: value > row["packed_length"]),
+            ):
+                if any(predicate(candidate["packed_length"]) for candidate in peers):
+                    candidates = [
+                        candidate for candidate in peers
+                        if predicate(candidate["packed_length"])
+                    ]
+                    neighbor = (
+                        min(candidates, key=lambda candidate: (
+                            candidate["packed_length"], candidate["workload_id"],
+                        ))
+                        if kind.endswith("shorter")
+                        else max(candidates, key=lambda candidate: (
+                            candidate["packed_length"], candidate["workload_id"],
+                        ))
+                    )
+                    for question_id in row["question_ids"]:
+                        expected[(kind, workload_id, question_id)] = {
+                            **common,
+                            "neighbor_workload_id": neighbor["workload_id"],
+                        }
+        expected[("request_complete", workload_id, None)] = common
+    return expected
+
+
+def equivalence_record_key(row: dict) -> tuple:
+    return (
+        row.get("kind"), row.get("workload_id"),
+        None if row.get("kind") == "request_complete" else row.get("question_id"),
+    )
+
+
+def validate_equivalence_transaction(
+    records: list[dict], expected: dict[tuple, dict], protocol: dict,
+    workload_meta: dict, device: str,
+) -> str:
+    if not records or records[-1].get("kind") != "request_complete":
+        raise ValueError("equivalence transaction lacks a completion record")
+    workload_id = records[-1].get("workload_id")
+    if not isinstance(workload_id, str):
+        raise ValueError("equivalence completion lacks a workload identity")
+    expected_keys = {key for key in expected if key[1] == workload_id}
+    actual_keys = []
+    for row in records:
+        validate_row_binding(row, protocol, workload_meta, device)
+        key = equivalence_record_key(row)
+        if key not in expected:
+            raise ValueError("equivalence transaction contains a non-frozen identity")
+        details = expected[key]
+        if row.get("parent_id") != details["parent_id"]:
+            raise ValueError("equivalence parent identity differs from the workload")
+        if row.get("suite") != details["suite"]:
+            raise ValueError("equivalence suite differs from the workload")
+        for field in ("question_index", "neighbor_workload_id"):
+            if field in details and row.get(field) != details[field]:
+                raise ValueError(f"equivalence {field} differs from the workload")
+        actual_keys.append(key)
+    if len(actual_keys) != len(set(actual_keys)):
+        raise ValueError("equivalence transaction contains duplicate observations")
+    if set(actual_keys) != expected_keys:
+        raise ValueError("equivalence transaction is incomplete")
+    return workload_id
+
+
+def clean_incomplete_equivalence(
+    path: Path, protocol: dict, workload_meta: dict,
+    workload_rows: list[dict], device: str,
+) -> set[str]:
+    header = {
+        "kind": "journal_header",
+        **artifact_row_binding(protocol, workload_meta, device),
+    }
+    if not path.exists():
+        atomic_write(path, jsonl_bytes([header]))
+        return set()
+    data = path.read_bytes()
+    if not data.endswith(b"\n"):
+        boundary = data.rfind(b"\n")
+        if boundary < 0:
+            raise ValueError("equivalence journal has no committed header")
+        data = data[:boundary + 1]
+    parsed = []
+    for line_number, line in enumerate(data.splitlines(), start=1):
+        try:
+            parsed.append(json.loads(line))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"equivalence journal is corrupt at committed line {line_number}"
+            ) from error
+    if not parsed or parsed[0] != header:
+        raise ValueError("equivalence journal header binding differs")
+    if any(row.get("kind") == "journal_header" for row in parsed[1:]):
+        raise ValueError("equivalence journal contains a duplicate header")
+    expected = expected_equivalence_inventory(workload_rows)
+    retained = [header]
+    transaction = []
+    completed = set()
+    for row in parsed[1:]:
+        transaction.append(row)
+        if row.get("kind") != "request_complete":
+            continue
+        workload_id = validate_equivalence_transaction(
+            transaction, expected, protocol, workload_meta, device,
+        )
+        if workload_id in completed:
+            raise ValueError("equivalence journal repeats a completed workload")
+        completed.add(workload_id)
+        retained.extend(transaction)
+        transaction = []
     atomic_write(path, jsonl_bytes(retained))
     return completed
 
@@ -848,7 +1204,10 @@ def equivalence(args) -> dict:
     meta_path = output / f"equivalence-{args.device}.meta.json"
     if meta_path.exists():
         raise FileExistsError("equivalence artifact is already complete")
-    completed = clean_incomplete_equivalence(result_path)
+    completed = clean_incomplete_equivalence(
+        result_path, protocol, meta, rows, args.device,
+    )
+    binding = artifact_row_binding(protocol, meta, args.device)
     requests = reload_requests(protocol, rows)
     model, tokenizer, delimiters, _, run, manifest = load_model(
         protocol["run"]["path"], args.device,
@@ -891,10 +1250,7 @@ def equivalence(args) -> dict:
                     for index, question in enumerate(request["questions"]):
                         records.append({
                             "kind": "base_equivalence",
-                            "protocol_sha256": protocol["protocol_sha256"],
-                            "workloads_sha256": meta["workloads_file_sha256"],
-                            "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
-                            "device": args.device,
+                            **binding,
                             "workload_id": row["workload_id"],
                             "parent_id": row["parent_id"],
                             "suite": row["suite"],
@@ -944,9 +1300,7 @@ def equivalence(args) -> dict:
                             ):
                                 records.append({
                                     "kind": kind,
-                                    "protocol_sha256": protocol["protocol_sha256"],
-                                    "workloads_sha256": meta["workloads_file_sha256"],
-                                    "device": args.device,
+                                    **binding,
                                     "workload_id": row["workload_id"],
                                     "parent_id": row["parent_id"],
                                     "suite": row["suite"],
@@ -987,9 +1341,7 @@ def equivalence(args) -> dict:
                             replacement_logits = logits_cpu(model([replacement]))[0][0]
                             records.append({
                                 "kind": "unrelated_sibling_replacement",
-                                "protocol_sha256": protocol["protocol_sha256"],
-                                "workloads_sha256": meta["workloads_file_sha256"],
-                                "device": args.device,
+                                **binding,
                                 "workload_id": row["workload_id"],
                                 "parent_id": row["parent_id"],
                                 "suite": row["suite"],
@@ -1035,9 +1387,7 @@ def equivalence(args) -> dict:
                             for index, question in enumerate(request["questions"]):
                                 records.append({
                                     "kind": kind,
-                                    "protocol_sha256": protocol["protocol_sha256"],
-                                    "workloads_sha256": meta["workloads_file_sha256"],
-                                    "device": args.device,
+                                    **binding,
                                     "workload_id": row["workload_id"],
                                     "parent_id": row["parent_id"],
                                     "suite": row["suite"],
@@ -1052,10 +1402,10 @@ def equivalence(args) -> dict:
                                 })
                     records.append({
                         "kind": "request_complete",
-                        "protocol_sha256": protocol["protocol_sha256"],
-                        "workloads_sha256": meta["workloads_file_sha256"],
-                        "device": args.device,
+                        **binding,
                         "workload_id": row["workload_id"],
+                        "parent_id": row["parent_id"],
+                        "suite": row["suite"],
                     })
                     for record in records:
                         handle.write(canonical_bytes(record) + b"\n")
@@ -1113,7 +1463,9 @@ def ordered_conditions(repetition: int, populations: dict) -> list[tuple]:
     if repetition % 2:
         population_names.reverse()
     scopes = list(SCOPES)
-    batches = [1, 2]
+    batches = sorted({
+        int(batch) for by_batch in populations.values() for batch in by_batch
+    })
     if repetition % 2:
         scopes.reverse()
     if repetition == 2:
@@ -1123,6 +1475,15 @@ def ordered_conditions(repetition: int, populations: dict) -> list[tuple]:
         for population in population_names
         for batch in batches
         for scope in scopes
+    ]
+
+
+def canonical_conditions(populations: dict) -> list[tuple]:
+    return [
+        (population, int(batch), scope)
+        for population in populations
+        for batch in sorted(populations[population], key=int)
+        for scope in SCOPES
     ]
 
 
@@ -1193,13 +1554,17 @@ def timing(args) -> dict:
     if args.device == "mps":
         torch.mps.empty_cache()
         synchronize(args.device)
-    process_id = str(uuid.uuid4())
+    process_id = PROCESS_INSTANCE_ID
     process_started = time.time()
     raw_rows = []
     populations = schedules["repetitions"][str(args.repetition)]
     conditions = ordered_conditions(args.repetition, populations)
+    canonical = canonical_conditions(populations)
+    binding = artifact_row_binding(protocol, meta, args.device, schedules)
     with torch.no_grad():
-        for condition_index, (population, batch_size, scope) in enumerate(conditions):
+        for condition in conditions:
+            population, batch_size, scope = condition
+            condition_index = canonical.index(condition)
             schedule = populations[population][str(batch_size)]
             for arm in arm_order(args.repetition, condition_index):
                 gc.collect()
@@ -1221,11 +1586,7 @@ def timing(args) -> dict:
                                 rows_by_id, batch["workload_ids"], arm,
                             )
                             raw_rows.append({
-                                "version": 1,
-                                "protocol_sha256": protocol["protocol_sha256"],
-                                "workloads_sha256": meta["workloads_file_sha256"],
-                                "schedules_sha256": schedules["schedules_sha256"],
-                                "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
+                                **binding,
                                 "process_id": process_id,
                                 "repetition": args.repetition,
                                 "device": args.device,
@@ -1237,6 +1598,7 @@ def timing(args) -> dict:
                                 "arm": arm,
                                 "schedule_index": schedule_index,
                                 "workload_ids": batch["workload_ids"],
+                                "parent_ids": batch["parent_ids"],
                                 "duration_ns": duration,
                                 "ns_per_request": duration / len(batch["workload_ids"]),
                                 **shape,
@@ -1251,6 +1613,8 @@ def timing(args) -> dict:
         "schedules_sha256": schedules["schedules_sha256"],
         "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
         "process_id": process_id,
+        "process_pid": PROCESS_PID,
+        "process_started_unix_ns": PROCESS_STARTED_UNIX_NS,
         "process_started_unix": process_started,
         "process_finished_unix": time.time(),
         "repetition": args.repetition,
@@ -1306,22 +1670,11 @@ def memory(args) -> dict:
     max_length = protocol["design"]["checkpoint"]["max_length"]
     temperature = protocol["design"]["checkpoint"]["temperature"]
     memory_design = protocol["design"]["memory"]
-    pool = [
-        row for row in rows if "multi_primary_pool" in row["performance_panels"]
-    ]
-    pool.sort(key=lambda row: selection_rank(
-        row, protocol["design"]["workload_selection"]["seed"],
-        "memory-steady-state",
-    ))
-    if not pool:
-        raise ValueError("memory workload is empty")
-    total = memory_design["steady_state_requests"]
-    workload_ids = [pool[index % len(pool)]["workload_id"] for index in range(total)]
-    batch_size = memory_design["request_batch_size"]
-    batches = [
-        workload_ids[start:start + batch_size]
-        for start in range(0, len(workload_ids), batch_size)
-    ]
+    memory_schedule = schedules["memory"]
+    total = memory_schedule["requests"]
+    batch_size = memory_schedule["request_batch_size"]
+    batches = memory_schedule["batches"]
+    binding = artifact_row_binding(protocol, meta, args.device, schedules)
     gc.collect()
     if args.device == "mps":
         torch.mps.empty_cache()
@@ -1329,7 +1682,8 @@ def memory(args) -> dict:
     baseline = memory_snapshot(args.device)
     observations = []
     with torch.no_grad():
-        for index, ids in enumerate(batches):
+        for index, batch in enumerate(batches):
+            ids = batch["workload_ids"]
             result = execute_complete(
                 model, tokenizer, delimiters,
                 [requests[workload_id] for workload_id in ids],
@@ -1338,15 +1692,12 @@ def memory(args) -> dict:
             del result
             snapshot = memory_snapshot(args.device)
             observations.append({
-                "version": 1,
-                "protocol_sha256": protocol["protocol_sha256"],
-                "workloads_sha256": meta["workloads_file_sha256"],
-                "schedules_sha256": schedules["schedules_sha256"],
-                "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
-                "device": args.device,
+                **binding,
                 "arm": args.arm,
                 "batch_index": index,
+                "suite": batch["suite"],
                 "workload_ids": ids,
+                "parent_ids": batch["parent_ids"],
                 **snapshot,
             })
     synchronize(args.device)
@@ -1368,6 +1719,7 @@ def memory(args) -> dict:
         "status": "completed",
         "protocol_sha256": protocol["protocol_sha256"],
         "workloads_sha256": meta["workloads_file_sha256"],
+        "schedules_sha256": schedules["schedules_sha256"],
         "checkpoint_sha256": protocol["run"]["checkpoint_sha256"],
         "device": args.device,
         "arm": args.arm,
@@ -1396,7 +1748,10 @@ def memory(args) -> dict:
 
 
 def aggregate_equivalence(path: Path, design: dict) -> dict:
-    rows = [row for row in load_jsonl(path) if row["kind"] != "request_complete"]
+    rows = [
+        row for row in load_jsonl(path)
+        if row["kind"] not in {"journal_header", "request_complete"}
+    ]
     threshold = design["equivalence"]
     groups = defaultdict(list)
     for row in rows:
@@ -1507,40 +1862,73 @@ def validate_artifact_binding(
 
 
 def expected_equivalence_counts(rows: list[dict]) -> dict[str, int]:
-    by_suite = defaultdict(list)
-    for row in rows:
-        by_suite[row["suite"]].append(row)
-    counts = {
-        "base_equivalence": sum(row["question_count"] for row in rows),
-        "question_order_reversal": sum(
-            row["question_count"] for row in rows if row["question_count"] > 1
-        ),
-        "sibling_removal": sum(
-            row["question_count"] for row in rows if row["question_count"] > 1
-        ),
-        "unrelated_sibling_replacement": sum(
-            "longest_diagnostic" in row["performance_panels"] for row in rows
-        ),
-        "batch_neighbor_shorter": 0,
-        "batch_neighbor_longer": 0,
-        "request_complete": len(rows),
+    counts = Counter(key[0] for key in expected_equivalence_inventory(rows))
+    counts["journal_header"] = 1
+    return dict(counts)
+
+
+def finite_number(value) -> bool:
+    return (
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def validate_comparison_value(value: dict, temperature: float) -> None:
+    if value.get("temperature") != temperature:
+        raise ValueError("equivalence comparison temperature differs")
+    reference = value.get("reference_probabilities")
+    candidate = value.get("candidate_probabilities")
+    if (
+        not isinstance(reference, list) or not isinstance(candidate, list)
+        or len(reference) < 2 or len(reference) != len(candidate)
+        or any(not finite_number(item) or item < 0 for item in reference + candidate)
+    ):
+        raise ValueError("equivalence comparison probabilities are invalid")
+    if not math.isclose(sum(reference), 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise ValueError("equivalence reference probabilities do not sum to one")
+    if not math.isclose(sum(candidate), 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise ValueError("equivalence candidate probabilities do not sum to one")
+    total_variation = 0.5 * sum(
+        abs(left - right) for left, right in zip(reference, candidate)
+    )
+    reference_action = max(range(len(reference)), key=reference.__getitem__)
+    candidate_action = max(range(len(candidate)), key=candidate.__getitem__)
+    top = sorted(reference, reverse=True)[:2]
+    checks = {
+        "total_variation": total_variation,
+        "reference_top_two_margin": top[0] - top[1],
     }
-    for row in rows:
-        if "longest_diagnostic" not in row["performance_panels"]:
-            continue
-        peers = [
-            candidate for candidate in by_suite[row["suite"]]
-            if candidate["workload_id"] != row["workload_id"]
-        ]
-        if any(candidate["packed_length"] < row["packed_length"] for candidate in peers):
-            counts["batch_neighbor_shorter"] += row["question_count"]
-        if any(candidate["packed_length"] > row["packed_length"] for candidate in peers):
-            counts["batch_neighbor_longer"] += row["question_count"]
-    return counts
+    for key, expected in checks.items():
+        if not finite_number(value.get(key)) or not math.isclose(
+            value[key], expected, rel_tol=1e-9, abs_tol=1e-12,
+        ):
+            raise ValueError(f"equivalence comparison {key} is inconsistent")
+    if value.get("reference_action") != reference_action:
+        raise ValueError("equivalence reference action is inconsistent")
+    if value.get("candidate_action") != candidate_action:
+        raise ValueError("equivalence candidate action is inconsistent")
+    if not isinstance(value.get("action_changed"), bool) or (
+        value["action_changed"] != (reference_action != candidate_action)
+    ):
+        raise ValueError("equivalence action-change flag is inconsistent")
+    log_difference = value.get("max_absolute_log_probability_difference")
+    if not finite_number(log_difference) or log_difference < 0:
+        raise ValueError("equivalence log-probability difference is invalid")
+    if min(reference + candidate) > 0:
+        expected_log_difference = max(
+            abs(math.log(left) - math.log(right))
+            for left, right in zip(reference, candidate)
+        )
+        if not math.isclose(
+            log_difference, expected_log_difference, rel_tol=1e-8, abs_tol=1e-11,
+        ):
+            raise ValueError("equivalence log-probability difference is inconsistent")
 
 
 def validate_equivalence_coverage(
     path: Path, metadata: dict, workload_rows: list[dict], design: dict,
+    protocol: dict, workload_meta: dict,
 ) -> None:
     rows = load_jsonl(path)
     actual = Counter(row["kind"] for row in rows)
@@ -1549,68 +1937,196 @@ def validate_equivalence_coverage(
         raise ValueError(f"equivalence coverage differs on {metadata['device']}")
     if metadata.get("kind_counts") != expected:
         raise ValueError(f"equivalence metadata coverage differs on {metadata['device']}")
-    temperatures = design["equivalence"]["temperatures"]
+    if metadata.get("records") != len(rows):
+        raise ValueError("equivalence metadata record count is inconsistent")
+    if metadata.get("requests") != len(workload_rows):
+        raise ValueError("equivalence metadata request count is inconsistent")
+    expected = expected_equivalence_inventory(workload_rows)
+    header = rows[0] if rows else {}
+    if header.get("kind") != "journal_header":
+        raise ValueError("equivalence artifact lacks its journal header")
+    validate_row_binding(
+        header, protocol, workload_meta, metadata["device"],
+    )
     keys = set()
-    for row in rows:
-        if row["kind"] == "request_complete":
-            key = (row["kind"], row["workload_id"])
-        else:
-            key = (row["kind"], row["workload_id"], row["question_id"])
-            comparisons = row["comparisons"]
-            groups = comparisons.values() if row["kind"] == "base_equivalence" else [comparisons]
-            if row["kind"] == "base_equivalence" and set(comparisons) != {"B", "S"}:
-                raise ValueError("base equivalence omits an execution arm")
-            for group in groups:
-                if [item["temperature"] for item in group] != temperatures:
-                    raise ValueError("equivalence temperatures differ from protocol")
+    temperatures = design["equivalence"]["temperatures"]
+    for row in rows[1:]:
+        validate_row_binding(
+            row, protocol, workload_meta, metadata["device"],
+        )
+        key = equivalence_record_key(row)
+        if key not in expected:
+            raise ValueError("equivalence result identity is not frozen")
         if key in keys:
             raise ValueError("equivalence result key is duplicated")
         keys.add(key)
+        details = expected[key]
+        if row.get("parent_id") != details["parent_id"]:
+            raise ValueError("equivalence result parent differs from the workload")
+        if row.get("suite") != details["suite"]:
+            raise ValueError("equivalence result suite differs from the workload")
+        for field in ("question_index", "neighbor_workload_id"):
+            if field in details and row.get(field) != details[field]:
+                raise ValueError(f"equivalence result {field} differs")
+        if row["kind"] == "request_complete":
+            continue
+        comparisons = row.get("comparisons")
+        if row["kind"] == "base_equivalence":
+            if not isinstance(comparisons, dict) or set(comparisons) != {"B", "S"}:
+                raise ValueError("base equivalence omits an execution arm")
+            if (
+                not isinstance(row.get("packed_logits"), list)
+                or len(row["packed_logits"]) < 2
+                or any(not finite_number(value) for value in row["packed_logits"])
+            ):
+                raise ValueError("base equivalence packed logits are invalid")
+            groups = comparisons.values()
+        else:
+            groups = [comparisons]
+        for group in groups:
+            if not isinstance(group, list) or len(group) != len(temperatures):
+                raise ValueError("equivalence comparison count differs from protocol")
+            for item, temperature in zip(group, temperatures):
+                validate_comparison_value(item, temperature)
+    if keys != set(expected):
+        raise ValueError("equivalence artifact does not match the frozen inventory")
 
 
-def validate_timing_coverage(path: Path, metadata: dict, schedules: dict) -> None:
+def validate_timing_coverage(
+    path: Path, metadata: dict, schedules: dict, protocol: dict,
+    workload_meta: dict, workload_rows: list[dict],
+) -> None:
     rows = load_jsonl(path)
     repetition = str(metadata["repetition"])
     populations = schedules["repetitions"][repetition]
-    expected = {}
-    for population, by_batch in populations.items():
-        for batch, schedule in by_batch.items():
-            for scope in SCOPES:
-                for arm in ARMS:
-                    for index, item in enumerate(schedule["measured"]):
-                        key = (population, int(batch), scope, arm, index)
-                        expected[key] = item
-    actual = {}
-    for row in rows:
-        key = (
-            row["population"], row["request_batch_size"], row["scope"],
-            row["arm"], row["schedule_index"],
+    canonical = canonical_conditions(populations)
+    expected = []
+    for condition in ordered_conditions(metadata["repetition"], populations):
+        population, batch, scope = condition
+        schedule = populations[population][str(batch)]["measured"]
+        for arm in arm_order(metadata["repetition"], canonical.index(condition)):
+            for index, item in enumerate(schedule):
+                expected.append((population, batch, scope, arm, index, item))
+    if len(rows) != len(expected):
+        raise ValueError("timing row count differs from the frozen schedule")
+    rows_by_id = {row["workload_id"]: row for row in workload_rows}
+    seen = set()
+    for row, (population, batch, scope, arm, index, item) in zip(rows, expected):
+        validate_row_binding(
+            row, protocol, workload_meta, metadata["device"], schedules,
         )
-        if key in actual:
+        key = (population, batch, scope, arm, index)
+        actual_key = (
+            row.get("population"), row.get("request_batch_size"), row.get("scope"),
+            row.get("arm"), row.get("schedule_index"),
+        )
+        if actual_key != key:
+            raise ValueError("timing rows are not in the frozen execution order")
+        if key in seen:
             raise ValueError("timing condition row is duplicated")
-        actual[key] = {
-            "suite": row["suite"], "workload_ids": row["workload_ids"],
-        }
+        seen.add(key)
+        for field in ("suite", "workload_ids", "parent_ids"):
+            if row.get(field) != item[field]:
+                raise ValueError(f"timing row {field} differs from the schedule")
+        if row.get("repetition") != metadata["repetition"]:
+            raise ValueError("timing row repetition differs from metadata")
         if row["process_id"] != metadata["process_id"]:
             raise ValueError("timing rows contain another process identity")
-    if actual != expected:
-        raise ValueError("timing rows differ from the frozen measured schedule")
+        actual_requests = len(item["workload_ids"])
+        if row.get("actual_requests") != actual_requests:
+            raise ValueError("timing row request count is inconsistent")
+        duration = row.get("duration_ns")
+        if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0:
+            raise ValueError("timing duration must be a positive integer")
+        if not finite_number(row.get("ns_per_request")) or not math.isclose(
+            row["ns_per_request"], duration / actual_requests,
+            rel_tol=1e-12, abs_tol=0.0,
+        ):
+            raise ValueError("timing per-request duration is inconsistent")
+        shape = execution_shape(rows_by_id, item["workload_ids"], arm)
+        for field, value in shape.items():
+            if row.get(field) != value:
+                raise ValueError(f"timing execution shape {field} is inconsistent")
+    if metadata.get("records") != len(rows):
+        raise ValueError("timing metadata record count is inconsistent")
 
 
-def validate_memory_coverage(path: Path, metadata: dict) -> None:
-    rows = load_jsonl(path)
-    expected_batches = math.ceil(
-        metadata["requests"] / metadata["request_batch_size"]
-    )
-    if len(rows) != expected_batches:
-        raise ValueError("memory observations do not cover the steady-state pass")
-    if [row["batch_index"] for row in rows] != list(range(expected_batches)):
-        raise ValueError("memory observation indexes are not contiguous")
+def validate_memory_snapshot(snapshot: dict, device: str) -> None:
+    required = {"rss_high_water_bytes"}
+    if device == "mps":
+        required.update({
+            "mps_current_allocated_bytes", "mps_driver_allocated_bytes",
+            "mps_recommended_max_bytes",
+        })
+    if not required.issubset(snapshot):
+        raise ValueError("memory snapshot omits a required counter")
     if any(
-        row["device"] != metadata["device"] or row["arm"] != metadata["arm"]
-        for row in rows
+        not isinstance(snapshot[key], int) or isinstance(snapshot[key], bool)
+        or snapshot[key] < 0
+        for key in required
     ):
-        raise ValueError("memory observation identity differs from metadata")
+        raise ValueError("memory snapshot counter is invalid")
+
+
+def validate_memory_coverage(
+    path: Path, metadata: dict, schedules: dict, protocol: dict,
+    workload_meta: dict,
+) -> dict:
+    rows = load_jsonl(path)
+    design = protocol["design"]["memory"]
+    memory_schedule = schedules["memory"]
+    expected = memory_schedule["batches"]
+    if metadata.get("requests") != design["steady_state_requests"]:
+        raise ValueError("memory metadata request count differs from the protocol")
+    if memory_schedule["requests"] != design["steady_state_requests"]:
+        raise ValueError("memory schedule request count differs from the protocol")
+    if metadata.get("request_batch_size") != design["request_batch_size"]:
+        raise ValueError("memory metadata batch size differs from the protocol")
+    if metadata.get("scope") != design["scope"]:
+        raise ValueError("memory scope differs from the protocol")
+    if len(rows) != len(expected):
+        raise ValueError("memory observations do not cover the steady-state pass")
+    for index, (row, batch) in enumerate(zip(rows, expected)):
+        validate_row_binding(
+            row, protocol, workload_meta, metadata["device"], schedules,
+        )
+        if row.get("batch_index") != index:
+            raise ValueError("memory observation indexes are not contiguous")
+        if row.get("arm") != metadata["arm"]:
+            raise ValueError("memory observation arm differs from metadata")
+        for field in ("suite", "workload_ids", "parent_ids"):
+            if row.get(field) != batch[field]:
+                raise ValueError(f"memory observation {field} differs from schedule")
+        validate_memory_snapshot(row, metadata["device"])
+    for name in ("baseline", "before_cache_release", "after_cache_release"):
+        snapshot = metadata.get(name)
+        if not isinstance(snapshot, dict):
+            raise ValueError(f"memory metadata omits {name}")
+        validate_memory_snapshot(snapshot, metadata["device"])
+    observed_maximum = {
+        key: max(row[key] for row in rows)
+        for key in rows[0]
+        if key.endswith("_bytes")
+    }
+    if metadata.get("observed_maximum") != observed_maximum:
+        raise ValueError("memory observed maximum is inconsistent")
+    residual = None
+    if metadata["device"] == "mps":
+        residual = (
+            metadata["after_cache_release"]["mps_current_allocated_bytes"]
+            - metadata["baseline"]["mps_current_allocated_bytes"]
+        )
+    if metadata.get("residual_live_tensor_increase_bytes") != residual:
+        raise ValueError("memory residual is inconsistent")
+    residual_flag = bool(
+        residual is not None
+        and residual > design["maximum_residual_live_tensor_increase_bytes"]
+    )
+    if not isinstance(metadata.get("residual_flag"), bool) or (
+        metadata["residual_flag"] != residual_flag
+    ):
+        raise ValueError("memory residual flag is inconsistent")
+    return {"residual": residual, "residual_flag": residual_flag}
 
 
 def paired_ratio_bootstrap(
@@ -1618,41 +2134,69 @@ def paired_ratio_bootstrap(
 ) -> dict:
     import random
 
-    paired = defaultdict(dict)
+    paired = defaultdict(lambda: defaultdict(list))
+    parent_by_workload = {}
     for record in records:
         if record["request_batch_size"] != 1:
             continue
-        key = (record["repetition"], record["workload_ids"][0])
-        paired[key][record["arm"]] = record["duration_ns"]
-    parents = sorted({workload_id for _, workload_id in paired})
-    by_parent = {}
-    for workload_id in parents:
+        if len(record.get("workload_ids", [])) != 1 or len(record.get("parent_ids", [])) != 1:
+            raise ValueError("timing bootstrap requires one workload and parent per record")
+        workload_id = record["workload_ids"][0]
+        parent_id = record["parent_ids"][0]
+        previous = parent_by_workload.setdefault(workload_id, parent_id)
+        if previous != parent_id:
+            raise ValueError("timing workload maps to multiple parents")
+        key = (record["repetition"], workload_id, parent_id)
+        paired[key][record["arm"]].append(record["duration_ns"])
+    per_repetition = {}
+    for key, arms in paired.items():
+        if set(arms) != {"P", "B"}:
+            raise ValueError("timing bootstrap has an unpaired execution arm")
+        if len(arms["P"]) != len(arms["B"]):
+            raise ValueError("timing bootstrap observation counts differ by arm")
+        per_repetition[key] = {
+            arm: statistics.fmean(values) for arm, values in arms.items()
+        }
+    if not per_repetition:
+        raise ValueError("timing bootstrap has no paired parents")
+    repetitions_by_workload = defaultdict(set)
+    for repetition, workload_id, _ in per_repetition:
+        repetitions_by_workload[workload_id].add(repetition)
+    repetition_sets = {tuple(sorted(value)) for value in repetitions_by_workload.values()}
+    if len(repetition_sets) != 1:
+        raise ValueError("timing bootstrap repetitions differ across workloads")
+    by_workload = {}
+    for workload_id, parent_id in sorted(parent_by_workload.items()):
         values = [
-            arms for (repetition, identity), arms in paired.items()
-            if identity == workload_id and "P" in arms and "B" in arms
+            arms for (repetition, identity, parent), arms in per_repetition.items()
+            if identity == workload_id and parent == parent_id
         ]
-        if not values:
-            continue
-        by_parent[workload_id] = {
+        by_workload[workload_id] = {
+            "parent_id": parent_id,
             "P": statistics.fmean(value["P"] for value in values),
             "B": statistics.fmean(value["B"] for value in values),
         }
-    if not by_parent:
-        raise ValueError("timing bootstrap has no paired parents")
-    point = sum(value["P"] for value in by_parent.values()) / sum(
-        value["B"] for value in by_parent.values()
+    by_parent = defaultdict(list)
+    for workload_id, value in by_workload.items():
+        by_parent[value["parent_id"]].append(workload_id)
+    point = sum(value["P"] for value in by_workload.values()) / sum(
+        value["B"] for value in by_workload.values()
     )
     rng = random.Random(seed)
     identities = sorted(by_parent)
     samples = []
     for _ in range(draws):
         selected = [rng.choice(identities) for _ in identities]
-        samples.append(
-            sum(by_parent[identity]["P"] for identity in selected)
-            / sum(by_parent[identity]["B"] for identity in selected)
-        )
+        numerator = denominator = 0.0
+        for parent_id in selected:
+            for workload_id in by_parent[parent_id]:
+                numerator += by_workload[workload_id]["P"]
+                denominator += by_workload[workload_id]["B"]
+        samples.append(numerator / denominator)
     return {
         "parents": len(by_parent),
+        "workloads": len(by_workload),
+        "paired_observations": sum(len(arms["P"]) for arms in paired.values()),
         "ratio": point,
         "interval_95": [quantile(samples, 0.025), quantile(samples, 0.975)],
         "draws": draws,
@@ -1726,6 +2270,21 @@ def aggregate_timings(paths: list[Path], design: dict) -> dict:
     return report
 
 
+def validate_runtime_compatibility(
+    metadata: list[dict], expected: dict | None = None,
+) -> None:
+    if not metadata:
+        raise ValueError("benchmark has no runtime metadata")
+    reference = metadata[0].get("runtime")
+    if not isinstance(reference, dict):
+        raise ValueError("benchmark artifact omits runtime identity")
+    if expected is not None and reference != expected:
+        raise ValueError("benchmark runtime differs from the frozen runtime")
+    for item in metadata[1:]:
+        if item.get("runtime") != reference:
+            raise ValueError("benchmark artifacts use inconsistent runtimes")
+
+
 def summarize(args) -> dict:
     output = Path(args.out).resolve()
     protocol, workload_rows, meta, schedules = load_frozen(output)
@@ -1781,14 +2340,51 @@ def summarize(args) -> dict:
     for device, metadata in zip(
         design["timing"]["devices"], equivalence_metadata,
     ):
+        if metadata.get("device") != device:
+            raise ValueError("equivalence artifact device differs")
         validate_equivalence_coverage(
             equivalence_paths[device], metadata, workload_rows, design,
+            protocol, meta,
         )
-    for path, metadata in zip(timing_paths, timing_metadata):
-        validate_timing_coverage(path, metadata, schedules)
-    for path, metadata in zip(memory_paths, memory_reports):
-        validate_memory_coverage(path, metadata)
-    process_ids = {item["process_id"] for item in timing_metadata}
+    timing_identities = [
+        (device, repetition)
+        for device in design["timing"]["devices"]
+        for repetition in range(design["timing"]["fresh_process_repetitions"])
+    ]
+    for path, metadata, (device, repetition) in zip(
+        timing_paths, timing_metadata, timing_identities,
+    ):
+        if metadata.get("device") != device or metadata.get("repetition") != repetition:
+            raise ValueError("timing artifact identity differs")
+        validate_timing_coverage(
+            path, metadata, schedules, protocol, meta, workload_rows,
+        )
+    memory_identities = [
+        (device, arm)
+        for device in design["memory"]["devices"] for arm in ARMS
+    ]
+    validated_memory = []
+    for path, metadata, (device, arm) in zip(
+        memory_paths, memory_reports, memory_identities,
+    ):
+        if metadata.get("device") != device or metadata.get("arm") != arm:
+            raise ValueError("memory artifact identity differs")
+        validated_memory.append(validate_memory_coverage(
+            path, metadata, schedules, protocol, meta,
+        ))
+    validate_runtime_compatibility(
+        equivalence_metadata + timing_metadata + memory_reports,
+        protocol["runtime_at_freeze"],
+    )
+    process_ids = {
+        (
+            item.get("process_id"), item.get("process_pid"),
+            item.get("process_started_unix_ns"),
+        )
+        for item in timing_metadata
+    }
+    if any(None in identity for identity in process_ids):
+        raise ValueError("timing artifact omits process identity")
     if len(process_ids) != len(timing_metadata):
         raise ValueError("timing repetitions did not use distinct fresh processes")
     equivalence_report = {
@@ -1804,7 +2400,8 @@ def summarize(args) -> dict:
     )
     timing_report = aggregate_timings(timing_paths, design)
     memory_passed = all(
-        not report["residual_flag"] for report in memory_reports
+        not validation["residual_flag"]
+        for report, validation in zip(memory_reports, validated_memory)
         if report["device"] == "mps"
     )
     timing_passed = all(timing_report[suite]["passed"] for suite in ("decision", "korean"))
@@ -1872,6 +2469,7 @@ def parser() -> argparse.ArgumentParser:
     freeze_parser = commands.add_parser("freeze")
     freeze_parser.add_argument("--run", required=True)
     freeze_parser.add_argument("--comparison-plan", required=True)
+    freeze_parser.add_argument("--development-report", required=True)
     freeze_parser.add_argument("--decision-suite", required=True)
     freeze_parser.add_argument("--transfer-suite", required=True)
     freeze_parser.add_argument("--korean-suite", required=True)

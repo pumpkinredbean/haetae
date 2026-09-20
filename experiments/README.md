@@ -101,6 +101,7 @@ Freeze the public development population after committing the runner:
 HF_HUB_OFFLINE=1 uv run python -m experiments.benchmark_shared_execution freeze \
   --run runs/shared-v1 \
   --comparison-plan evaluations/comparison-v1/plan.json \
+  --development-report evaluations/shared-v1-development.json \
   --decision-suite evaluations/shared-v1 \
   --transfer-suite evaluations/kev-transfer-v4 \
   --korean-suite evaluations/korean-v1 \

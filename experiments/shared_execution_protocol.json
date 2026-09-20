@@ -10,6 +10,10 @@
     "step": 3894,
     "checkpoint_sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
     "temperature": 1.5197255188671874,
+    "development_report": {
+      "report_sha256": "8dbe775cd09539b9d366047aa886717a9344dd2a271aa65dd030663b0f8a1d97",
+      "file_sha256": "960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23"
+    },
     "precision": "float32",
     "attention_implementation": "eager",
     "max_length": 2048
@@ -43,6 +47,8 @@
     "cell": ["suite", "original_question_count"],
     "primary_multi_question_suites": ["decision", "korean"],
     "single_question_control_suites": ["decision", "transfer"],
+    "distinct_parent_per_performance_cell": true,
+    "longest_diagnostics": "Always include the highest-option-count request in each cell, then fill by packed length without repeating a parent.",
     "manufactured_sharing": false
   },
   "timing": {
@@ -55,7 +61,8 @@
     "single_control_measured_requests": 64,
     "clock": "time.perf_counter_ns",
     "mps_synchronization": "Immediately before and after every timed operation.",
-    "counterbalancing": "Latin rotation of arm order plus alternating scope and batch order across repetitions and conditions.",
+    "request_schedule": "The same frozen request identities and order are reused in every repetition.",
+    "counterbalancing": "For every stable condition identity, Latin rotation gives each arm every order position once; traversal scope and batch order alternate separately.",
     "scopes": {
       "pretokenized_forward": "Frozen encoding objects are ready; dynamic collation, attention masks, transfers, encoder, and pointer head are included.",
       "complete_request": "In-memory request validation, tokenization with one state tokenization per request, packing, transfers, model, fixed-temperature probabilities, CPU materialization, and response construction are included. Checkpoint loading and transport are excluded."
@@ -67,7 +74,8 @@
       "maximum_p95_latency_ratio": 1.05,
       "replicated_regression_ratio": 1.05,
       "bootstrap_draws": 10000,
-      "bootstrap_seed": 4073971648024356758
+      "bootstrap_seed": 4073971648024356758,
+      "estimator": "Average repeated observations within workload and process, average each workload over repetitions, retain equal workload weighting for the point ratio, and resample actual parent clusters jointly."
     }
   },
   "memory": {
@@ -77,7 +85,8 @@
     "scope": "complete_request",
     "maximum_residual_live_tensor_increase_bytes": 67108864,
     "cache_release_inside_latency_trials": false,
-    "observed_maximum_label": "Sampled allocation maximum; not a guaranteed allocator peak."
+    "observed_maximum_label": "Sampled allocation maximum; not a guaranteed allocator peak.",
+    "schedule": "The exact workload, parent, suite, and batch sequence is frozen before inference and reused for every device and arm."
   },
   "decision": {
     "equivalent_and_faster": "Run a narrow emotion and offensive-domain replay ablation while preserving all other recipe settings and excluding development parents.",

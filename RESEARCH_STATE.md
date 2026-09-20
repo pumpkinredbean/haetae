@@ -333,14 +333,27 @@ The accepted paired comparison has report SHA-256 `19c1d1493ef521e0e339697ee1f6c
 
 Decision and Korean NLL and both Brier differences favor shared with intervals excluding zero. Transfer source-macro NLL is `+0.0789`, interval `[+0.0464, +0.1117]`, and Brier is `+0.0330`, interval approximately `[+0.0123, +0.0534]`, so transfer calibration is materially worse despite the accuracy interval crossing zero. The largest transfer accuracy losses are emotion `-0.2845` and offensive-tweet detection `-0.1375`; the Score transfer cell improves by `+0.2250`. All 89 repository tests pass offline. No locked test was opened.
 
-## Next actions
+## Active execution benchmark
 
-ChatGPT 6 Pro inspected exact commit `4a15e3be724ef7210bde42c92da5f084031c1332` and selected trained-checkpoint packed-versus-separate execution as the highest-information next experiment. It distinguished the strong decision and Korean development gains from the unresolved transfer regression, and noted that worse transfer NLL and Brier do not by themselves isolate calibration from discrimination. It did not open a locked test.
+ChatGPT 6 Pro reviewed exact commit `581203961b42b72565e0293e26f34ccf50660e16` and returned `EXECUTION BENCHMARK HOLD`. It reproduced five pre-measurement defects without opening a locked test: missing schedule binding in memory metadata; last-observation overwrite and workload-level rather than parent-level resampling; incomplete semantic validation of artifacts; unsafe recovery of torn or stale equivalence journals; and arm rotation tied to changing traversal order.
 
-The selected experiment keeps generation 79 and temperature `1.5197255188671874` fixed. It compares packed execution with batched and serial single-question execution on every common-clean public development request. Same-device gates require maximum total variation at most `1e-4`, 99th-percentile total variation at most `1e-5`, maximum log-probability difference at most `1e-3`, and no changed action when the reference top-two margin exceeds `2e-4`. The MPS efficiency gate requires a packed-to-batched complete-request mean latency ratio at most `0.90`, a paired-parent interval upper bound below `1.0`, and a p95 ratio at most `1.05` in both decision and Korean multi-question workloads.
+The corrected runner now:
 
-`experiments/shared_execution_protocol.json` freezes those gates. `experiments/benchmark_shared_execution.py` freezes result-independent workload and timing schedules, runs CPU and MPS equivalence, records three fresh-process latency repetitions, runs separate steady-state memory passes, and binds every artifact to the protocol, checkpoint, tokenizer, suites, source, and runtime. A real preflight froze 3,963 requests and 7,227 questions and a generation-79 MPS smoke request produced packed-versus-batched total variation up to `9.92e-9` and packed-versus-serial total variation up to `7.42e-9`. This is mechanics evidence, not the benchmark result. All 95 repository tests pass offline.
+- freezes one request schedule for all repetitions and a separate exact memory schedule;
+- selects distinct evaluation parents and records both workload and parent identities;
+- averages every repeated workload observation before jointly resampling actual parent clusters;
+- binds and validates every row against the protocol, workload, schedule, checkpoint, device, exact observation inventory, positive duration, derived timing values, memory counters, and frozen runtime;
+- recomputes memory residual decisions instead of trusting a stored Boolean;
+- records process identity that remains stable within one process and requires distinct processes across timing repetitions;
+- uses a bound equivalence journal, discards only an unfinished final transaction, rejects corruption in committed data, and rejects retained rows from another protocol;
+- rotates arms from a stable condition identity, independently of traversal order;
+- binds the fixed temperature to the accepted public-development report.
 
-1. Commit and push the frozen protocol and benchmark runner.
-2. Ask ChatGPT 6 Pro to review the exact benchmark commit before measuring results.
-3. Address any material review finding, freeze `evaluations/shared-execution-v1`, then run equivalence, timing, memory, and summary without opening a locked test.
+The review's false-pass example now reports the correct P/B ratio `1.028` instead of `0.800`, and reversing input rows leaves the result unchanged. A result-blind public-development preflight freezes 3,963 requests and 7,227 questions, with 256 distinct multi-question parents, 64 distinct single-question control parents, and identical request schedules across all three repetitions. All 103 repository tests pass offline. These are implementation checks, not benchmark results.
+
+Next actions:
+
+1. Commit and push the corrected runner, protocol, tests, and research state.
+2. Ask ChatGPT 6 Pro to review that exact commit and reproduce the previous counterexamples.
+3. Only after acceptance, refreeze `evaluations/shared-execution-v1` and run equivalence, timing, memory, and summary on public development data.
+4. Use the result to choose between execution optimization and a scoped specialist with an explicit out-of-distribution deferral gate.
