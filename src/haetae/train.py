@@ -30,11 +30,13 @@ def batch_loss(logit_list, targets, brier_w=0.5):
     assert len(logit_list) == len(targets) and len(logit_list) > 0
     ce, br = 0.0, 0.0
     for logits, t in zip(logit_list, targets):
-        t = t.to(logits.device)
+        # validate on CPU — every .item()/.all() on an accelerator
+        # tensor forces a device sync inside the training loop
         assert logits.ndim == 1 and t.ndim == 1 and logits.shape == t.shape
         assert logits.numel() >= 2, "need >=2 options for a decision"
         assert torch.isfinite(t).all() and (t >= 0).all()
         assert abs(float(t.sum()) - 1.0) < 1e-3
+        t = t.to(logits.device)
         logp = F.log_softmax(logits, dim=-1)
         ce = ce - (t * logp).sum()
         br = br + ((F.softmax(logits, -1) - t) ** 2).sum()
