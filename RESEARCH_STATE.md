@@ -407,7 +407,7 @@ The Latin rotation correctly gives every arm each nominal position once. It does
 
 The controls narrow the interpretation. MPS single-question P/B stays near one without a matching slowdown. CPU multi-question ratios are stable and below one. MPS batch-two ratios are stable and below one for both primary populations. MPS pretokenized decision ratios are stable below one, while Korean is approximately neutral. The strongest supported conclusion is therefore that packed and batched execution are numerically equivalent on the audited population; CPU multi-question and batch-two MPS execution show replicated benefits; batch-one MPS decision is promising; and a stable batch-one Korean advantage is not established. The zero residual memory result remains a residual-liveness check, not a transient-peak comparison.
 
-Next actions:
+## Batch-one MPS confirmation
 
 The additive MPS-only batch-one confirmation implementation is commit `98e269f2e242cf940ebf7c2484600cf66a2eb2bf`. All 113 repository tests pass. Its frozen directory is `evaluations/shared-execution-confirmation-v1`:
 
@@ -419,14 +419,14 @@ The additive MPS-only batch-one confirmation implementation is commit `98e269f2e
 - every request is P-first in three processes and B-first in three, while each process has exactly 50/50/32 P-first requests in the three populations;
 - each fresh process gives both arms two full untimed complete-request passes, then measures one adjacent P/B pair per request before any other benchmark scope;
 - the report preserves the original equal-workload and parent-bootstrap gates, reports crossed process-and-parent uncertainty, requires P/B below one in at least five processes and in both arm-order strata, and fails when the single-question-control point ratio leaves `[0.9, 1.1]` or its crossed interval excludes one;
-- no checkpoint inference has run under this confirmation protocol, and no locked test has been opened.
+- Historical pre-run state: at freeze time, no checkpoint inference had run under this confirmation protocol, and no locked test had been opened.
 - completed process markers are semantically revalidated before they are skipped; an unbound result without metadata is preserved as incomplete and rerun in a fresh process; combined observations can resume only when their bytes reproduce exactly; the final summary has a full replay command.
 
-Pending actions:
+Pre-run review and measured execution:
 
 The pre-measurement review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-prerun-v3.zip`, with SHA-256 `efae5b18cb1c373b3521133245685f36e12a51ecb7e5bdb157101bd2f3bc042e` and manifest SHA-256 `e8d2913c1b6a6da6ed06fde8c983e3179533058f4870f95d345e3577a6d6e2c9`. ChatGPT 6 Pro verified the archive, commit, frozen bindings, schedule balance, six-process pipeline, synthetic evidence, recovery behavior, and gates without model inference, then returned `BATCH-ONE CONFIRMATION START`.
 
-1. Launch the approved resumable six-process script in tmux:
+The approved resumable six-process script was launched in tmux:
 
 ```bash
 cd /Users/minkyu/workspace/haetae
@@ -457,4 +457,14 @@ No locked test was opened. The original execution report remains unchanged.
 
 The measured review archive is `/Users/minkyu/workspace/haetae-shared-confirmation-measured-v1.zip`, with SHA-256 `3001cfdb8af8ab336dc371ef041f7f2b046218639604abdc6709455e450946f7` and manifest SHA-256 `4dea7522bd877ac5f1065d2c9b9edd3fd9f349afcb586edb15d2b0c8e576542c`.
 
-2. Obtain ChatGPT 6 Pro review of the complete measured artifacts and the control-order interpretation. Treat any accepted result as warmed steady-state performance. Do not retrain or open either locked test.
+ChatGPT 6 Pro independently verified the measured archive and returned `BATCH-ONE CONFIRMATION RESULT QUALIFIED`. It matched the archive SHA-256, all 39 ZIP members, all 38 manifest-listed payloads, every frozen binding, all 3,168 observations and 1,584 adjacent pairs, the six distinct process identities, every point statistic, all six bootstrap intervals, the frozen gates, and the exact final replay. It ran no new timing or model inference and opened no locked test.
+
+The qualified claim is deliberately narrow: on the frozen public-development multi-question workloads after the declared warmup, packed execution reduced mean complete-request latency by approximately 24% for decision and 16% for Korean on the recorded Apple M3 Pro MPS environment. The result replicated across all six fresh processes and both adjacent-arm orders. It is stronger evidence than the original three-repetition benchmark, whose pooled batch-one result depended heavily on one anomalous process.
+
+The single-question control's position effect is real and remains part of the result. Its first operation averaged 28.088 ms and its immediately repeated second operation averaged 15.826 ms. Exact counterbalancing makes this effect label-neutral in the pooled control, and both primary populations favor packed execution in both order strata. ChatGPT 6 Pro also performed a post-hoc same-position sensitivity check: first-position-only P/B is `0.7661` for decision, `0.8637` for Korean, and `0.9879` for the identical-input control. This sensitivity supports the scoped interpretation but is not a predeclared acceptance gate and does not identify cache, allocator, compilation, or another runtime mechanism as the cause.
+
+The result does not establish cold-start, transport, concurrent-serving, isolated-arm, unseen-shape, cross-machine, cross-session, or universal performance. The Korean aggregate also does not imply the same improvement for every Korean source: exploratory source-level ratios differ substantially. Any deployment-speed claim needs a separately frozen arm-isolated serving trace. No corrective rerun is required for the accepted warmed adjacent-workload claim.
+
+Next research decision:
+
+Freeze a public-development coverage experiment focused on the large emotion and offensive-tweet transfer losses before changing the architecture or starting another training run. The experiment should distinguish task and label coverage from probability calibration and representation error, bind its comparisons before calculating new outputs, and receive ChatGPT 6 Pro pre-run review. Preserve the qualified execution and Laya calibration artifacts unchanged, and do not open either locked test.
