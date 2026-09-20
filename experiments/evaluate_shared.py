@@ -27,6 +27,14 @@ from experiments.train_shared import source_identity
 EXPECTED_TRANSFER_MANIFEST_SHA256 = (
     "31677c2256b406222e7d94ffdc0a02a70ce05746b9efe307876024c4e77291d1"
 )
+EXPECTED_KOREAN_MANIFEST_SHA256 = (
+    "614a7c0a2febc617f2aaf34bf1906cc8bf0ed958e9138052a37da5ba5b04d5c1"
+)
+
+
+def logits_to_list(logits: torch.Tensor) -> list[float]:
+    return logits.detach().cpu().to(dtype=torch.float64).tolist()
+
 
 def target_distribution(question: dict, option_count: int) -> torch.Tensor:
     if question["soft"] is None:
@@ -120,7 +128,7 @@ def infer_requests(
                         "soft": question["soft"],
                         "packed_request_tokens": len(encoding.input_ids),
                         "questions_in_request": len(request["questions"]),
-                        "logits": logits.detach().to(torch.float64).cpu().tolist(),
+                        "logits": logits_to_list(logits),
                     })
     return predictions
 
@@ -196,10 +204,38 @@ def reliability(confidences: list[float], correct: list[float], bins: int = 15):
     return {"ece": expected_error, "bins": details}
 
 
+def macro_f1(predictions: list[dict], predicted_labels: list[int]) -> dict:
+    ontologies = {
+        tuple(prediction.get("option_keys", prediction["options"]))
+        for prediction in predictions
+    }
+    if len(ontologies) != 1:
+        return {"status": "not_applicable", "reason": "mixed option ontology"}
+    labels = range(len(next(iter(ontologies))))
+    values = []
+    for label in labels:
+        true_positive = sum(
+            predicted == label and prediction["label"] == label
+            for prediction, predicted in zip(predictions, predicted_labels)
+        )
+        false_positive = sum(
+            predicted == label and prediction["label"] != label
+            for prediction, predicted in zip(predictions, predicted_labels)
+        )
+        false_negative = sum(
+            predicted != label and prediction["label"] == label
+            for prediction, predicted in zip(predictions, predicted_labels)
+        )
+        denominator = 2 * true_positive + false_positive + false_negative
+        values.append(2 * true_positive / denominator if denominator else 0.0)
+    return {"status": "ok", "value": sum(values) / len(values)}
+
+
 def metric_summary(predictions: list[dict], temperature: float) -> dict:
     if not predictions:
         return {"status": "no_records", "n": 0}
     nll, brier, annotation_brier, accuracy, confidence = [], [], [], [], []
+    predicted_labels = []
     ranked_probability_score, expected_index_error = [], []
     for prediction in predictions:
         logits = torch.tensor(prediction["logits"], dtype=torch.float64)
@@ -207,6 +243,7 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
         log_probabilities = F.log_softmax(logits / temperature, -1)
         probabilities = log_probabilities.exp()
         predicted = int(probabilities.argmax())
+        predicted_labels.append(predicted)
         nll.append(float(-(target * log_probabilities).sum()))
         brier.append(float(((probabilities - target) ** 2).sum()))
         annotation_brier.append(float(
@@ -234,6 +271,7 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
         "accuracy": sum(accuracy) / len(accuracy),
         "mean_confidence": sum(confidence) / len(confidence),
         "top_label_reliability": reliability(confidence, accuracy),
+        "hard_label_macro_f1": macro_f1(predictions, predicted_labels),
     }
     if ranked_probability_score:
         result["ranked_probability_score"] = (
@@ -334,6 +372,11 @@ def evaluate(args) -> dict:
     )
     if transfer_manifest_sha256 != args.expect_transfer_manifest_sha256:
         raise ValueError("transfer suite manifest differs from the predeclared digest")
+    korean_manifest_sha256 = file_sha256(
+        Path(args.korean_suite) / "manifest.json"
+    )
+    if korean_manifest_sha256 != args.expect_korean_manifest_sha256:
+        raise ValueError("Korean suite manifest differs from the predeclared digest")
     decision_calibration, decision_manifest = load_frozen_split(
         args.decision_suite, "calibration",
     )
@@ -344,6 +387,9 @@ def evaluate(args) -> dict:
         raise ValueError("decision suite manifest changed during evaluation")
     transfer_development, transfer_manifest = load_frozen_split(
         args.transfer_suite, "development",
+    )
+    korean_development, korean_manifest = load_frozen_split(
+        args.korean_suite, "development",
     )
     calibration_predictions = infer_requests(
         model, tokenizer, delimiters, decision_calibration,
@@ -356,6 +402,10 @@ def evaluate(args) -> dict:
     )
     transfer_predictions = infer_requests(
         model, tokenizer, delimiters, transfer_development,
+        max_length, args.batch,
+    )
+    korean_predictions = infer_requests(
+        model, tokenizer, delimiters, korean_development,
         max_length, args.batch,
     )
     report = {
@@ -399,11 +449,23 @@ def evaluate(args) -> dict:
                 tokenizer, delimiters, transfer_development, max_length,
             ),
         },
+        "korean_development": {
+            "manifest_sha256": korean_manifest_sha256,
+            "split_sha256": korean_manifest["files"][
+                "development.jsonl"
+            ]["sha256"],
+            "raw": grouped_metrics(korean_predictions, 1.0),
+            "scaled": grouped_metrics(korean_predictions, temperature),
+            "packing": packing_report(
+                tokenizer, delimiters, korean_development, max_length,
+            ),
+        },
         "locked_test_opened": False,
         "predictions": {
             "calibration": calibration_predictions,
             "decision_development": decision_predictions,
             "transfer_development": transfer_predictions,
+            "korean_development": korean_predictions,
         },
     }
     report["report_sha256"] = canonical_report_sha256(report)
@@ -426,9 +488,14 @@ def main() -> None:
     parser.add_argument("--run", required=True)
     parser.add_argument("--decision-suite", required=True)
     parser.add_argument("--transfer-suite", required=True)
+    parser.add_argument("--korean-suite", required=True)
     parser.add_argument(
         "--expect-transfer-manifest-sha256",
         default=EXPECTED_TRANSFER_MANIFEST_SHA256,
+    )
+    parser.add_argument(
+        "--expect-korean-manifest-sha256",
+        default=EXPECTED_KOREAN_MANIFEST_SHA256,
     )
     parser.add_argument("--out", required=True)
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"))
@@ -440,6 +507,7 @@ def main() -> None:
         "temperature": report["temperature"]["value"],
         "decision_raw": report["decision_development"]["raw"]["source_macro"],
         "transfer_raw": report["transfer_development"]["raw"]["source_macro"],
+        "korean_raw": report["korean_development"]["raw"]["source_macro"],
     }, indent=2))
 
 

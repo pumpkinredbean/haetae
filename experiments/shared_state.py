@@ -233,7 +233,7 @@ class SharedStateDecisionModel(nn.Module):
         dtype = next(self.backbone.parameters()).dtype
         masks = branch_attention_masks(
             encodings, self.device, dtype,
-            int(self.backbone.config.local_attention),
+            int(self.backbone.config.sliding_window),
         )
         hidden = self.backbone(
             input_ids=input_ids,

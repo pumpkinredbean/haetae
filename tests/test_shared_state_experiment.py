@@ -130,6 +130,27 @@ class SharedStateExperimentTest(unittest.TestCase):
         self.assertFalse(allowed[first_index, second_index])
         self.assertFalse(allowed[state_index, first_index])
 
+    def test_sliding_mask_uses_modernbert_half_window(self):
+        encoded = self.encode([question("first", ["a", "b"])])
+        radius = int(self.model.backbone.config.sliding_window)
+        self.assertEqual(radius, 4)
+        mask = branch_attention_masks(
+            [encoded], "cpu", torch.float32, radius,
+        )["sliding_attention"][0, 0]
+        branch = [
+            index for index, segment in enumerate(encoded.segments)
+            if segment == 1
+        ]
+        query, boundary, outside = branch[5], branch[1], branch[0]
+        self.assertEqual(
+            encoded.position_ids[query] - encoded.position_ids[boundary], 4,
+        )
+        self.assertEqual(
+            encoded.position_ids[query] - encoded.position_ids[outside], 5,
+        )
+        self.assertEqual(float(mask[query, boundary]), 0.0)
+        self.assertLess(float(mask[query, outside]), 0.0)
+
     def test_state_is_stored_once_and_fixed_content_is_never_truncated(self):
         encoded = encode_request(
             self.tokenizer,

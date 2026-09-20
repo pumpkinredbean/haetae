@@ -39,8 +39,10 @@ def source_code_identity(repository: Path) -> dict:
     files = [
         repository / "experiments" / "freeze_korean_suite.py",
         repository / "experiments" / "kev_adapter.py",
+        repository / "src" / "haetae" / "checkpoint.py",
         repository / "src" / "haetae" / "data.py",
         repository / "src" / "haetae" / "measure.py",
+        repository / "src" / "haetae" / "train.py",
     ]
     result = {}
     digest = hashlib.sha256()

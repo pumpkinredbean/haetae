@@ -43,7 +43,9 @@ It shares no weights, no training data, and no outputs with Jev.
     experiments/shared_state.py       shared-state question-branch prototype
     experiments/train_shared.py       immutable shared-state trainer
     experiments/evaluate_shared.py    development-suite evaluator
+    experiments/fetch_kev_suites.py   pinned public Kev suite fetcher
     experiments/freeze_korean_suite.py Korean development/test freezer
+    experiments/freeze_shared_suite.py Kev v7 and Korean training-suite freezer
 
 ## Contract notes
 
@@ -129,3 +131,26 @@ used by the baseline train, internal validation, and A/B/C populations:
 The freezer removes exact duplicates with conflicting labels and balances each
 source by its primary label. Development data may be used for model selection.
 The adapter rejects the locked test unless its explicit test gate is enabled.
+
+Materialize the pinned Kev v7 decision and v4 transfer train, calibration, and
+development files. This command deliberately does not fetch either locked test:
+
+    uv run python -m experiments.fetch_kev_suites --out-root evaluations
+
+Combine Kev v7 with the exact Korean train and internal-validation memberships
+from the immutable baseline run. The command also proves state and parent
+disjointness against Kev decision development, Kev transfer development, and
+Korean development:
+
+    uv run python -m experiments.freeze_shared_suite --kev-suite evaluations/kev-decision-v7 --transfer-suite evaluations/kev-transfer-v4 --run-dir runs/baseline --korean-suite evaluations/korean-v1 --out evaluations/shared-v1
+
+Train two complete request epochs when the suite has 15,572 requests and the
+effective batch is eight:
+
+    uv run python -m experiments.train_shared --suite evaluations/shared-v1 --steps 3894 --batch 8 --microbatch 2 --max-len 2048 --device mps --local-files-only --out runs/shared-v1 --resume none
+
+The development evaluator fits temperature on the combined calibration split
+and scores the frozen decision, transfer, and Korean development suites. It does
+not expose a test-split argument:
+
+    uv run python -m experiments.evaluate_shared --run runs/shared-v1 --decision-suite evaluations/shared-v1 --transfer-suite evaluations/kev-transfer-v4 --korean-suite evaluations/korean-v1 --device mps --batch 2 --out evaluations/shared-v1-development.json
