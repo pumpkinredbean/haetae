@@ -150,6 +150,17 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-v3m4 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --microbatch 4 --max-len 1536 --out runs/v3-micro4 --save-every 50 --resume none 2>&1 | tee -a train_v3_micro4.log'"
 ```
 
+The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1acfb85c` at 2026-09-20 15:23:41 KST.
+
+- tmux session: `haetae-v3m4`
+- run ID: `6c0474c2-7ed5-4513-9920-acbd1171e290`
+- run-spec SHA-256: `9e5e500f998cdffa5c534dfa432e815796d19bfbb7067316d7b36c545c86d6b2`
+- producer SHA-256: `f4dd1b79b0eaf1ee5e6b2cf8d1270cccf0f0f33b1040da4c9bf8b88ebbe7a216`
+- immutable train and internal-validation fingerprints match the prior full attempt: `372dfb7edbe90dbf61be1ab8171a8833f74eba616b39103ecee9896e184be5c1` and `c95c9c32397584182f1e75ca6accfbbe256b4cee2b2c1698fe0d15242b78758b`;
+- generation 1 is the validated running checkpoint at step 0;
+- generation 2 is the first durable training checkpoint at step 50, SHA-256 `53fdd30ff443205a73dc62f0dc095f5800ac7148b3b916085350fba24024cd44`; step 50 loss was 1.3054 with zero rejected batches, and the run continued past step 75;
+- the final evaluation population was frozen immediately after start in `evaluations/v3-micro4`. Plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281. No model result was inspected before this assignment.
+
 ## Frozen measurement protocol
 
 `haetae.measure` implements the three-role protocol requested by the external review.
