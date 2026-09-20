@@ -373,7 +373,9 @@ The MPS equivalence stage completed 3,963 requests and 22,537 bound records. Ind
 
 The CPU equivalence stage also completed 3,963 requests and 22,537 bound records, with all 14 groups passing. Maximum total variation is `5.123981406701672e-06`, maximum absolute log-probability difference is `1.9270702280138607e-05`, and action changes are zero. Artifact SHA-256 is `df53ef8697a7be696caecbc40100e8c137c48c5d986216532c9206e82c12ad28`. The descriptive CPU-versus-MPS packed comparison has zero action changes across 7,227 questions; its maximum total variation is `8.140450314960464e-06` at temperature 1 and `5.769615788867033e-06` at the fixed fitted temperature.
 
-MPS timing repetitions 0 and 1 completed in distinct processes and passed schedule, row, duration, derived-value, and artifact validation. Repetition 2 is active. Timing gates remain uncomputed until all three repetitions complete; memory has not started.
+All six timing artifacts completed in distinct processes and passed schedule, row, duration, derived-value, runtime, and artifact validation. Under the frozen aggregate gate, MPS packed-versus-batched complete-request timing passes for both primary populations: decision mean ratio `0.6093`, parent-bootstrap 95% interval `[0.5872, 0.6317]`, p95 ratio `0.4904`; Korean mean ratio `0.6936`, interval `[0.6681, 0.7203]`, p95 ratio `0.4427`.
+
+The per-process MPS mean ratios vary substantially: decision is `0.8759`, `0.3756`, and `0.8151`; Korean is `1.0322`, `0.4121`, and `1.0534`. The pooled frozen gate passes, but this run-order-sensitive spread requires explicit final review before claiming a stable practical speedup. MPS memory P and B completed their 1,000-request schedules with zero residual live-tensor increase and validated artifact SHA-256 values `4b38cc583cab2c932acc442d2a9aa288cbf3fbdd29ae3a4079a5733e80914901` and `03da1c8962106fef377dd1956f356682d5cd05017c6e0b1475a8a0dd82123763`. MPS memory S is active; CPU memory and final summary have not started.
 
 Next actions:
 
