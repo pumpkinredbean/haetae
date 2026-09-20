@@ -241,6 +241,8 @@ The combined training suite is frozen at `evaluations/shared-v1`:
 - train, calibration, and decision-development SHA-256 values are `e6170e0f5b1920ca56f74a56f341d7fdf3472d70bbb8fe73ab72eb19dfacf22f`, `2b70af1e55714878d5377bb09ececcddf6481bcaf0e26d4ce3304d348fa76476`, and `1af33ba7170aa4ec64ccd83b81974a5c3c61071b7e5b9b2322d4565f05e36556`;
 - the pinned fetcher deliberately materializes no Kev locked-test file. Neither Kev nor Korean locked test has been opened.
 
+An exact-state audit against the baseline's immutable train and internal-validation membership found five overlapping requests in the public Kev decision-v7 development split, all from BoolQ. The transfer-v4 and Korean development splits have zero overlap. Model comparison will therefore report both the complete public development result and a common clean subset that excludes those same five requests from both models; the shared training suite and evaluation membership remain frozen.
+
 ## Next actions
 
 1. Complete the active role A/B policy fit, validate its artifacts, then run the explicitly gated role C evaluation.
