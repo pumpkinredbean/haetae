@@ -159,6 +159,7 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 - immutable train and internal-validation fingerprints match the prior full attempt: `372dfb7edbe90dbf61be1ab8171a8833f74eba616b39103ecee9896e184be5c1` and `c95c9c32397584182f1e75ca6accfbbe256b4cee2b2c1698fe0d15242b78758b`;
 - generation 1 is the validated running checkpoint at step 0;
 - generation 2 is the first durable training checkpoint at step 50, SHA-256 `53fdd30ff443205a73dc62f0dc095f5800ac7148b3b916085350fba24024cd44`; step 50 loss was 1.3054 with zero rejected batches, and the run continued past step 75;
+- The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. Generation 26 then published step 1250 with SHA-256 `8e0e83e97232f805fb548a8c146b2c21f8a889a536212808bea9592854d82e8f`; the same run is active and continued past step 1275.
 - the final evaluation population was frozen immediately after start in `evaluations/v3-micro4`. Plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281. No model result was inspected before this assignment.
 
 ## Frozen measurement protocol
@@ -176,10 +177,22 @@ The protocol has 14 focused tests; all 41 repository tests pass. It also passed 
 
 An offline preflight loaded every declared remote source at its exact cached commit plus both local Korean files, reconstructed the old full run's 25,500 training and 3,400 internal-validation questions, and froze every registered track without a role leak. At the default 1,600-parent cap per track, plan `e9440dafb69a756a5b8beab3cbc7fbcc72bc13af65a4f99690d05016e0478faf` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281.
 
+## Shared-state experiment
+
+- The prototype uses `jhu-clsp/mmBERT-small` at revision `abc32620dd4f6ab06f5fbe905dc25f310618e09f`, with four unforgeable decision delimiters and a pointer head.
+- The state is encoded once. Each bidirectional question branch attends to the state and itself, while the state cannot attend to branches and sibling branches cannot attend to each other. Branch position IDs restart after the state.
+- Tiny-model tests prove sibling isolation and packed-versus-separate equivalence. A real untrained mmBERT CPU probe packed two Korean questions into 73 tokens instead of 42 and 54 separate tokens; maximum logit differences were `1.67e-6` and `1.03e-5`.
+- The Kev decision-v4 manifest SHA-256 is `1b33e566d114f9eafeff55b36c221fadb2a4ae358a1b9cc68006e82c7cfad8f1`; its verified training split SHA-256 is `cb55b79e037c9f5a0ef2de4efe79ec6ef5d7d8d21aa64e94eee7731d7eddce74`.
+- The training split has 10,896 requests and 13,896 questions. Two thousand requests contain two or three questions over one state. Every request fits the mmBERT 2,048-token policy without state truncation; the maximum is 1,011 tokens.
+- The transfer-v4 development split SHA-256 is `ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e`. Its 764 requests contain one question each, so it measures transfer quality but not multi-question efficiency.
+- The trainer binds suite bytes, model revision, tokenizer, code, optimizer, scheduler, data order, and random state to immutable periodic generations. It averages question losses within a request and then averages requests, uses Choice permutation augmentation, and adds ranked probability score for Score questions.
+- The evaluator fits one source-balanced temperature on decision-v4 calibration and reports raw and scaled decision-v4 and transfer-v4 development metrics. Locked tests require an explicit code gate and have not been opened.
+- Fifty-four repository tests pass, including 13 focused shared-state, adapter, training-objective, and evaluation tests.
+
 ## Next actions
 
-1. Start the reviewed fresh replacement run and monitor its authoritative manifest, process, memory, and periodic generations.
-2. Complete the frozen certification protocol with Choice stress tests, synchronized latency, and digest-bound artifacts.
-3. After completion, evaluate the baseline on its held-out sources and the frozen `kev` transfer development suite.
-4. Design the shared-state architecture as a separate run rather than changing this baseline in place.
-5. Send the exact final code commit and measured results to ChatGPT 6 Pro through the same Aside REPL conversation, implement supported findings, and rerun affected evidence.
+1. Keep the resumed baseline writer alive and verify periodic generations through the completed step 3000 checkpoint.
+2. Finish ChatGPT 6 Pro's exact measurement review, implement reproducible findings, and freeze a replacement plan if the measurement-code identity changes.
+3. Fit the frozen policy and evaluate role C only after the baseline completes.
+4. Push the shared-state prototype and obtain an exact-commit review before starting its MPS run.
+5. Compare the completed baseline and shared-state model on the frozen Kev development suites, then freeze a parent-disjoint Korean development and locked suite before model selection.
