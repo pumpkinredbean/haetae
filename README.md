@@ -36,7 +36,24 @@ It shares no weights, no training data, and no outputs with Jev.
     src/haetae/train.py      CE + Brier training loop
     src/haetae/eval.py       accuracy, ECE, latency per source
     src/haetae/calibrate.py  temperature scaling + split conformal
+    src/haetae/certify.py    calibration + selective-risk certification harness
     src/haetae/serve.py      /v1/systemone FastAPI
+
+## Contract notes
+
+- Packing: [CLS] state [SEP] instructions [SEP] opt1 [SEP] opt2 ...
+  Each option is scored from the hidden state of the [SEP] that
+  precedes it (ModernBERT is bidirectional, so the marker sees the
+  option). All options must fit whole — the state yields its token
+  budget to the candidate set, never the reverse.
+- Choice records get candidate-order augmentation at train time:
+  positions are not permutation-equivariant, and fixed option order
+  would let the model learn slot indexes instead of reading options.
+- Score keeps canonical ordinal order; noul keeps "yes" first.
+- Records that cannot fit their full candidate set are skipped and
+  counted, never silently truncated.
+- The act/abstain guarantee is a certified selective-risk bound
+  (one-sided binomial on accepted examples), not just empirical ECE.
 
 ## Train
 
