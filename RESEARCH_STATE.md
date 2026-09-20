@@ -271,7 +271,7 @@ An exact-state audit against the baseline's immutable train and internal-validat
 
 Commit `720b62c` added that result-blind comparison, and commits `0fad931` and `aafd461` bind it to the corrected rendered-state audit and its exact external suites. Comparison plan `dc11cd8099fd3fe202145b20f4fee241ef98223b59ea3c16d1d243a3d73edd87` binds the completed baseline, all three public development suites, evaluator code, and exact exclusions. It removes 31 baseline-training-overlap requests containing 32 questions from the shared calibration partition for both models, while retaining 401 states from the baseline's held internal-validation partition as legitimate calibration data. It removes the five BoolQ development requests from both models' common-clean metrics. Baseline packing preflight accepted all 2,148 calibration and 7,232 development questions without state truncation.
 
-Commit `4765215` added paired parent-bootstrap comparison of the two development reports. ChatGPT 6 Pro returned `COMPARISON ANALYSIS HOLD` after 49 controlled probes: question-task source names split parents that emit multiple primitives, both reports could agree on provenance that differed from the frozen plan, and a negative label indexed the final option. Commit `3e6d31d9704165e40ddfce4333de1a0045508387` reconstructs origin-source parent identities and exact question inventories from the frozen public splits, couples all task-source questions from one parent during resampling, validates both reports against the plan and completed runs, recomputes calibration temperatures, rejects malformed targets, and records analyzer provenance. Eight focused tests and 19 related tests pass. A narrow re-review of this exact commit is in progress.
+Commit `4765215` added paired parent-bootstrap comparison of the two development reports. ChatGPT 6 Pro returned `COMPARISON ANALYSIS HOLD` after 49 controlled probes: question-task source names split parents that emit multiple primitives, both reports could agree on provenance that differed from the frozen plan, and a negative label indexed the final option. Commit `3e6d31d` closed those findings, but a second review found that retrying draws without every task source silently conditioned the bootstrap distribution. Commit `9cf90e30224ed6faacf12b08614fb12189c22bcd` uses fixed origin-source and task-source-incidence strata, retains every draw, fails unestimable singleton strata, and cross-checks the completed manifest and run-specification identity. ChatGPT 6 Pro returned `COMPARISON ANALYSIS ACCEPT` after 10 checked-in tests and 48 additional controlled probes. The accepted intervals are pointwise and conditional on fixed trained models, fitted temperatures, and observed stratum composition.
 
 The corrected public-only rendered-state audit preserved the existing frozen suite bytes and again found zero overlap across 20,084 model-visible states and 18,412 source-parent identities. Its artifact SHA-256 is `b1d4c966d6a29493a3580f2f8e8b75ddf446f660f6e37e4a792e2b33ca487dbc`, and its file SHA-256 is `fa1300b3ec30ad321bacaa21ec41fcccb658b8b93378a75aef5d22aa739280b3`. All 79 repository tests pass.
 
@@ -300,11 +300,11 @@ tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 - generation 2 is the first durable trained checkpoint at step 50, SHA-256 `2a53635a19f109fdd2ed128aaac373a6186255266f7920eef52f013b71fef40b`;
 - generation 37 is the latest validated checkpoint at step 1,800, SHA-256 `642c386555c9de2eec522768ca1bb43703fd8523bba04a51902f785ab38f6d19`;
 - the original tmux server disappeared immediately after generation 37 with no writer, held lock, checkpoint error, or disk error. Automatic resume validated generation 37 and continued from the exact cursor and random state; step 1,825 logged loss `0.7845` in the resumed process.
+- generation 59 is the latest validated resumed checkpoint at step 2,900, SHA-256 `0c9652e1793d2fa50d4703d2895691478e77b6a37f5adccdc6c349a23f261319`; the run remains active in epoch 1 with zero skipped batches.
 
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
-2. Obtain the narrow re-review of analysis commit `3e6d31d`.
-3. Complete the fresh shared-state MPS run from the frozen recipe.
-4. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
-5. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
+2. Complete the fresh shared-state MPS run from the frozen recipe.
+3. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
+4. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
