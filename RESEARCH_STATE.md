@@ -150,6 +150,21 @@ cd /Users/minkyu/workspace/haetae
 tmux new-session -d -s haetae-v3m4 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.train --sources ag_news,banking77,massive,mnli,anli,arc,emotion,klue_ynat,boolq,nsmc,civil_toxicity,sst5,helpsteer2 --per-source 1500 --eval-per-source 200 --steps 3000 --batch 8 --microbatch 4 --max-len 1536 --out runs/v3-micro4 --save-every 50 --resume none 2>&1 | tee -a train_v3_micro4.log'"
 ```
 
+## Frozen measurement protocol
+
+`haetae.measure` implements the three-role protocol requested by the external review.
+
+- Each source has an explicit labeled evaluation-track registry. Hugging Face sources load at a declared commit revision; local Korean files are bound by SHA-256.
+- Preparation reconstructs and verifies the run's consumed training and internal-validation fingerprints. It excludes complete parents with any exact normalized-record or state overlap.
+- A, B, and C assignments are deterministic, source-order independent, and disjoint by record, state, and parent. A fits one source-balanced soft-target temperature. B freezes conformal thresholds and a Bonferroni-corrected selective-risk family. Only the explicitly gated final command reads C.
+- The final artifact reports stable soft-target NLL, histogram and annotation Brier scores, full-class macro F1, calibration bins, Noul yes-probability reliability, ordinal RPS and expected-index error, parent-cluster bootstrap intervals, conformal coverage and set sizes, and simultaneous selective-risk bounds. Zero accepted examples are recorded as not certified.
+- Choice stress uses one formal question per parent and cell across all eligible sources. Permutation and controlled option removal reuse the exact retained state and instruction token prefix. Removal never deletes the gold option or the original top prediction, and binary questions are reported as ineligible rather than divided by zero.
+- Latency uses a digest-selected workload and records model-only and packing-inclusive distributions for batch one and the evaluation batch. MPS trials synchronize before and after timing and record workload shape, warmup, repetitions, software, hardware, and accelerator memory.
+
+The protocol has 12 focused tests; all 39 repository tests pass. It also passed two real completed-checkpoint paths. A HelpSteer2 run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News run exercised 30 semantic option permutations and 10 controlled option removals over 10 C-role parents with no context-prefix drift. These are mechanics smokes, not quality results.
+
+An offline preflight loaded every declared remote source at its exact cached commit plus both local Korean files, reconstructed the old full run's 25,500 training and 3,400 internal-validation questions, and froze every registered track without a role leak. With a 40-parent cap per track, plan `3e48f2d0294a64e9558cbc5bfc07521c875989cbac7a020c5d0a175a3239ec1a` contains A/B/C record counts 274/274/543 and parent counts 140/140/280.
+
 ## Next actions
 
 1. Start the reviewed fresh replacement run and monitor its authoritative manifest, process, memory, and periodic generations.

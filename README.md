@@ -38,6 +38,7 @@ It shares no weights, no training data, and no outputs with Jev.
     src/haetae/eval.py       accuracy, ECE, latency per source
     src/haetae/calibrate.py  temperature scaling + split conformal
     src/haetae/certify.py    calibration + selective-risk certification harness
+    src/haetae/measure.py    frozen A/B/C evaluation and signed result artifacts
     src/haetae/serve.py      /v1/systemone FastAPI
 
 ## Contract notes
@@ -84,7 +85,27 @@ certification accept only a manifest whose status is `completed`.
 The server accepts only a completed generation. Without a calibration
 artifact it reports `calibrated: false`. A `calibration.json` must be
 bound to the same run ID, checkpoint generation and SHA-256, tokenizer,
-inference policy, and named calibration data. The certification command
-can create that artifact for one evaluated source:
+inference policy, and named calibration data.
 
-    uv run python -m haetae.certify --ckpt runs/baseline --sources sst5 --save-calibration-source sst5
+## Freeze and measure a result
+
+Freeze the evaluation population before inspecting model results. The
+preparation command verifies the training-data fingerprints, pins source
+revisions, removes consumed record and state overlap, and writes
+parent-disjoint A, B, and C role files. Replace the example run ID with
+the value in the run's `run.json`.
+
+    uv run python -m haetae.measure prepare --run-dir runs/baseline --expect-run-id RUN_ID --out evaluations/baseline
+
+After training completes, role A fits one source-balanced temperature and
+role B freezes conformal and selective-risk policy. Neither command reads
+role C.
+
+    uv run python -m haetae.measure fit --plan evaluations/baseline --run-dir runs/baseline --device mps --batch 4
+
+The final command requires an explicit gate before reading role C. It
+writes digest-bound raw and calibrated metrics, conformal coverage,
+simultaneous selective-risk bounds, controlled Choice stress results, and
+synchronized latency distributions.
+
+    uv run python -m haetae.measure evaluate --plan evaluations/baseline --run-dir runs/baseline --device mps --batch 4 --allow-certification
