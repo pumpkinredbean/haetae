@@ -300,11 +300,12 @@ tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_L
 - generation 2 is the first durable trained checkpoint at step 50, SHA-256 `2a53635a19f109fdd2ed128aaac373a6186255266f7920eef52f013b71fef40b`;
 - generation 37 is the latest validated checkpoint at step 1,800, SHA-256 `642c386555c9de2eec522768ca1bb43703fd8523bba04a51902f785ab38f6d19`;
 - the original tmux server disappeared immediately after generation 37 with no writer, held lock, checkpoint error, or disk error. Automatic resume validated generation 37 and continued from the exact cursor and random state; step 1,825 logged loss `0.7845` in the resumed process.
-- generation 59 is the latest validated resumed checkpoint at step 2,900, SHA-256 `0c9652e1793d2fa50d4703d2895691478e77b6a37f5adccdc6c349a23f261319`; the run remains active in epoch 1 with zero skipped batches.
+- the resumed tmux server later disappeared immediately after generation 71 at step 3,500. Again there was no writer, held lock, checkpoint error, or disk error. Automatic resume validated generation 71 and continued at step 3,525.
+- generation 79 completed the run at step 3,894 with SHA-256 `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`, epoch 1, cursor 15,572, and zero skipped batches. The completed loader revalidated the checkpoint body, run specification, manifest identity, target step, optimizer state, and digests.
 
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
-2. Complete the fresh shared-state MPS run from the frozen recipe.
-3. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
+2. Evaluate the baseline and completed shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
+3. Produce the accepted paired fixed-incidence comparison.
 4. Ask ChatGPT 6 Pro to review the measured development comparison and choose the first result-driven ablation.
