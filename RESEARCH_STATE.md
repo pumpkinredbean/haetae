@@ -52,7 +52,8 @@ Verified on the real training path:
 - periodic checkpoint written at step 50;
 - SIGTERM received during training and produced an atomic step-58 checkpoint;
 - tmux session exited cleanly with `stopped with resumable checkpoint`;
-- the same command was relaunched with `--resume auto`; resume confirmation is pending after dataset loading;
+- the same command was relaunched with `--resume auto` and logged `resumed runs/v1/checkpoint.pt at step 58`;
+- training continued through a new periodic step-100 checkpoint, proving optimizer/scheduler state was usable after restart;
 - an independent tiny-model round-trip restored weights, optimizer/scheduler state, step, skipped count, and progress metadata.
 
 ## Long-running command
@@ -69,8 +70,8 @@ tmux new-session -d -s haetae "HF_HUB_OFFLINE=1 uv run python -u -m haetae.train
 
 ## Next actions
 
-1. Confirm the restarted job logs `resumed ... at step 58`, then verify a later periodic checkpoint.
-2. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
+1. Read and reproduce the 6 Pro review of exact commit `33006e1`; fix supported findings and push a new SHA.
+2. Keep the resumed run progressing from step 100; if the process disappears, use `--resume auto` from `progress.json`.
 3. After step 3000, run `haetae.certify` across held-out sources, fix any harness errors, and record results.
 4. Measure single-request and batched CPU/MPS latency and run permutation/option perturbation stress tests.
 5. Send code and measured results to 6 Pro for final review; implement supported findings and rerun affected checks.
