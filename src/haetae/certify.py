@@ -18,15 +18,25 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer
 
 from .calibrate import certify_selective_risk, fit_temperature
+from .checkpoint import (
+    CheckpointError,
+    load_completed_checkpoint,
+    model_config_fingerprint,
+    tokenizer_fingerprint,
+)
 from .data import LOADERS
 from .eval import ece, predict, stress_option_perturbation, stress_permutation
 from .model import HaetaeModel
 
 
 def load_model(ckpt_dir, device):
-    ck = torch.load(f"{ckpt_dir}/model.pt", map_location="cpu", weights_only=False)
+    ck, run, _ = load_completed_checkpoint(ckpt_dir)
     tok = AutoTokenizer.from_pretrained(ckpt_dir)
+    if tokenizer_fingerprint(tok) != run["spec"]["tokenizer_fingerprint"]:
+        raise CheckpointError("certification tokenizer does not match the run")
     m = HaetaeModel(ck["config"]["backbone"])
+    if model_config_fingerprint(m) != run["spec"]["model_config_fingerprint"]:
+        raise CheckpointError("certification model configuration does not match the run")
     m.backbone.load_state_dict(ck["backbone"])
     m.head.load_state_dict(ck["head"])
     return m.to(device).eval(), tok

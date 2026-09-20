@@ -9,6 +9,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from transformers import AutoTokenizer
 
+from .checkpoint import (
+    CheckpointError,
+    load_completed_checkpoint,
+    model_config_fingerprint,
+    tokenizer_fingerprint,
+)
 from .model import HaetaeModel, collate, confidence_from_probs
 
 app = FastAPI()
@@ -33,9 +39,13 @@ class Req(BaseModel):
 
 def load(checkpoint="runs/v1"):
     global _model, _tok, _temperature, _max_len, _calibrated
+    ck, run, _ = load_completed_checkpoint(checkpoint)
     _tok = AutoTokenizer.from_pretrained(checkpoint)
-    ck = torch.load(f"{checkpoint}/model.pt", map_location="cpu", weights_only=False)
+    if tokenizer_fingerprint(_tok) != run["spec"]["tokenizer_fingerprint"]:
+        raise CheckpointError("serving tokenizer does not match the completed run")
     _model = HaetaeModel(ck["config"]["backbone"])
+    if model_config_fingerprint(_model) != run["spec"]["model_config_fingerprint"]:
+        raise CheckpointError("serving model configuration does not match the run")
     _model.backbone.load_state_dict(ck["backbone"])
     _model.head.load_state_dict(ck["head"])
     _model.to(_device).eval()

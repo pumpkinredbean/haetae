@@ -34,6 +34,7 @@ It shares no weights, no training data, and no outputs with Jev.
     src/haetae/data.py       public datasets -> normalized primitive records
     src/haetae/model.py      ModernBERT + packed option-marker head
     src/haetae/train.py      CE + Brier training loop
+    src/haetae/checkpoint.py run identity + verified checkpoint generations
     src/haetae/eval.py       accuracy, ECE, latency per source
     src/haetae/calibrate.py  temperature scaling + split conformal
     src/haetae/certify.py    calibration + selective-risk certification harness
@@ -58,7 +59,17 @@ It shares no weights, no training data, and no outputs with Jev.
 ## Train
 
     uv sync
-    uv run python -m haetae.train --sources ag_news,boolq,sst5,banking77,klue_ynat,nsmc
+    uv run python -m haetae.train --sources ag_news,boolq,sst5,banking77,klue_ynat,nsmc --out runs/baseline --resume none
+
+Resume the same immutable run after an interruption:
+
+    uv run python -m haetae.train --sources ag_news,boolq,sst5,banking77,klue_ynat,nsmc --out runs/baseline --resume auto
+
+The output directory is bound to one run identity. Each save writes a
+new immutable checkpoint generation, publishes its size and SHA-256 in
+`latest.json`, and retains the previous validated generation. A fresh
+run refuses to overwrite an existing run directory. Serving and
+certification accept only a manifest whose status is `completed`.
 
 ## Serve
 
