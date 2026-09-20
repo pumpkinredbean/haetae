@@ -732,7 +732,7 @@ def apply_gates(statistics_by_population: dict, design: dict) -> dict:
     interval = control["process_parent_bootstrap_interval_95"]
     control_failure = bool(
         not lower <= control["equal_workload_ratio"] <= upper
-        and not interval[0] <= 1.0 <= interval[1]
+        or not interval[0] <= 1.0 <= interval[1]
     )
     gate = design["primary_gate"]
     primary = {}

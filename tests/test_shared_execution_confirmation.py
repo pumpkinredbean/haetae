@@ -161,6 +161,12 @@ class SharedExecutionConfirmationTests(unittest.TestCase):
         changed["single_control"] = item(1.2, [1.1, 1.3])
         self.assertTrue(apply_gates(changed, self.design())["negative_control"]["failure"])
         self.assertFalse(any(x["passed"] for x in apply_gates(changed, self.design())["primary"].values()))
+        changed = copy.deepcopy(values)
+        changed["single_control"] = item(1.2, [0.8, 1.3])
+        self.assertTrue(apply_gates(changed, self.design())["negative_control"]["failure"])
+        changed = copy.deepcopy(values)
+        changed["single_control"] = item(1.05, [1.01, 1.09])
+        self.assertTrue(apply_gates(changed, self.design())["negative_control"]["failure"])
 
     def test_process_validator_rejects_swapped_pair(self):
         protocol, schedule = self.protocol_and_schedule()

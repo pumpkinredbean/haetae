@@ -35,7 +35,7 @@
     "population": "single_control",
     "material_ratio_lower": 0.9,
     "material_ratio_upper": 1.1,
-    "failure_definition": "The equal-workload point ratio is outside the material interval and the crossed process-and-parent 95% interval excludes one."
+    "failure_definition": "The equal-workload point ratio is outside the material interval or the crossed process-and-parent 95% interval excludes one."
   },
   "uncertainty": {
     "parent_bootstrap_draws": 10000,
