@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "source_benchmark": "evaluations/shared-execution-v1",
+  "device": "mps",
+  "fresh_processes": 6,
+  "request_batch_size": 1,
+  "scope": "complete_request",
+  "arms": ["P", "B"],
+  "warmup": {
+    "complete_passes": 2,
+    "description": "Every selected request executes both arms adjacently in each untimed pass. The second pass reverses the first pass arm order."
+  },
+  "measurement": {
+    "description": "Each selected request executes one adjacent timed P/B pair. No other benchmark scope runs in the process before measurement.",
+    "clock": "time.perf_counter_ns",
+    "mps_synchronization": "Immediately before and after every timed operation."
+  },
+  "populations": {
+    "decision": 100,
+    "korean": 100,
+    "single_control": 64
+  },
+  "counterbalancing": {
+    "description": "Every request is P-first in exactly three processes and B-first in exactly three. Each process has 50 P-first decision requests, 50 P-first Korean requests, and 32 P-first controls. Request order is independently digest-ranked per process."
+  },
+  "primary_gate": {
+    "populations": ["decision", "korean"],
+    "maximum_equal_workload_mean_ratio": 0.9,
+    "maximum_parent_bootstrap_95_percent_upper_bound": 1.0,
+    "maximum_p95_latency_ratio": 1.05,
+    "minimum_processes_below_one": 5,
+    "require_both_arm_order_strata_below_one": true
+  },
+  "negative_control": {
+    "population": "single_control",
+    "material_ratio_lower": 0.9,
+    "material_ratio_upper": 1.1,
+    "failure_definition": "The equal-workload point ratio is outside the material interval and the crossed process-and-parent 95% interval excludes one."
+  },
+  "uncertainty": {
+    "parent_bootstrap_draws": 10000,
+    "parent_bootstrap_seed": 4073971648024356758,
+    "process_parent_bootstrap_draws": 20000,
+    "process_parent_bootstrap_seed": 20260921,
+    "process_parent_method": "Crossed resampling: sample six processes with replacement and source-namespaced parents with replacement, then retain all selected process-by-parent observations."
+  },
+  "interpretation": "A passing result describes warmed steady-state MPS batch-one complete-request latency on the frozen public-development workloads. It does not replace the original benchmark or measure cold start, transport, or transient peak memory.",
+  "locked_test_opened": false
+}
