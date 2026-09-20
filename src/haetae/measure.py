@@ -182,6 +182,14 @@ def state_digest(record: dict) -> str:
     return digest_value(record.get("state"))
 
 
+def ontology_digest(record: dict) -> str:
+    return digest_value({
+        "source": record.get("source"),
+        "type": record.get("type"),
+        "options": record.get("options"),
+    })
+
+
 def parent_identity(record: dict) -> str:
     parent = record.get("parent")
     return str(parent) if parent is not None else "state:" + state_digest(record)
@@ -260,6 +268,45 @@ def reconstruct_consumed(run: dict) -> dict:
             "reconstructed consumed-data fingerprints do not match run.json"
         )
     all_records = train + validation
+    prior_accumulators = {}
+    for record in train:
+        options = record["options"]
+        soft = record.get("soft")
+        if soft is None:
+            target = [0.0] * len(options)
+            target[record["label"]] = 1.0
+        else:
+            target = [float(value) for value in soft]
+        identity = ontology_digest(record)
+        accumulator = prior_accumulators.setdefault(identity, {
+            "source": record["source"],
+            "primitive": record["type"],
+            "option_count": len(options),
+            "option_text_sha256": digest_value(options),
+            "count": 0,
+            "target_sum": [0.0] * len(options),
+        })
+        if len(accumulator["target_sum"]) != len(target):
+            raise ValueError("training ontology changed option count")
+        accumulator["count"] += 1
+        accumulator["target_sum"] = [
+            observed + value
+            for observed, value in zip(accumulator["target_sum"], target)
+        ]
+    training_priors = {}
+    for identity, accumulator in prior_accumulators.items():
+        if accumulator["count"] < 20:
+            continue
+        denominator = accumulator["count"] + accumulator["option_count"]
+        training_priors[identity] = {
+            key: value for key, value in accumulator.items()
+            if key != "target_sum"
+        }
+        training_priors[identity]["probabilities"] = [
+            (value + 1.0) / denominator
+            for value in accumulator["target_sum"]
+        ]
+        training_priors[identity]["smoothing"] = "add-one"
     return {
         "train_count": len(train),
         "validation_count": len(validation),
@@ -267,6 +314,12 @@ def reconstruct_consumed(run: dict) -> dict:
         "validation_fingerprint": observed_validation,
         "record_digests": {record_digest(record) for record in all_records},
         "state_digests": {state_digest(record) for record in all_records},
+        "training_only_priors": {
+            "ontology": "exact source, primitive, and ordered option texts",
+            "minimum_training_records": 20,
+            "smoothing": "add-one",
+            "values": training_priors,
+        },
     }
 
 
@@ -603,6 +656,7 @@ def prepare(run_dir: str | Path, output: str | Path, expect_run_id: str,
             },
             "tracks": track_audits,
             "files": files,
+            "training_only_priors": consumed["training_only_priors"],
             "code": _code_identity(repository),
             "local_data_artifacts": _local_data_artifacts(
                 repository, selected_sources,
@@ -915,22 +969,21 @@ def choice_stress_report(model, tokenizer, records: list[dict], device: str,
         else:
             packed_units.append((item, packed))
     if not packed_units:
+        empty = {
+            "raw": _grouped_stress([]),
+            "temperature_scaled": _grouped_stress([]),
+        }
         return {
             "status": "not_applicable",
             "submitted": len(units),
             "rejected_context": rejected,
-            "permutation": _grouped_stress([]),
-            "option_removal": _grouped_stress([]),
+            "permutation": empty,
+            "option_removal": empty,
         }
 
     base_logits = _infer_packed(
         model, tokenizer, [packed for _, packed in packed_units], device, batch,
     )
-    base_probabilities = [
-        torch.softmax(logits.to(torch.float64) / temperature, -1)
-        for logits in base_logits
-    ]
-
     permutation_variants = []
     for unit_index, (item, packed) in enumerate(packed_units):
         orders = _permutation_orders(
@@ -948,42 +1001,18 @@ def choice_stress_report(model, tokenizer, records: list[dict], device: str,
         [variant["packed"] for variant in permutation_variants],
         device, batch,
     ) if permutation_variants else []
-    permutation_values = defaultdict(list)
-    for variant, logits in zip(permutation_variants, permutation_logits):
-        unit_index = variant["unit_index"]
-        order = variant["order"]
-        probabilities = torch.softmax(
-            logits.to(torch.float64) / temperature, -1,
-        )
-        aligned = torch.empty_like(probabilities)
-        for new_index, original_index in enumerate(order):
-            aligned[original_index] = probabilities[new_index]
-        baseline = base_probabilities[unit_index]
-        permutation_values[unit_index].append({
-            "agreement": int(baseline.argmax() == aligned.argmax()),
-            "tv": float(0.5 * (baseline - aligned).abs().sum()),
-        })
-    permutation_rows = []
-    for unit_index, values in permutation_values.items():
-        item = packed_units[unit_index][0]
-        permutation_rows.append({
-            "track": item["meta"]["track"],
-            "source": item["meta"]["source"],
-            "variants": len(values),
-            "agreement": _mean([value["agreement"] for value in values]),
-            "mean_tv": _mean([value["tv"] for value in values]),
-        })
-
     removal_variants = []
     skipped_binary = 0
     skipped_no_controlled_removal = 0
-    for unit_index, ((item, packed), baseline) in enumerate(zip(
-            packed_units, base_probabilities)):
+    for unit_index, (item, packed) in enumerate(packed_units):
         option_count = len(item["record"]["options"])
         if option_count < 3:
             skipped_binary += 1
             continue
-        protected = {int(baseline.argmax()), int(item["record"]["label"])}
+        protected = {
+            int(base_logits[unit_index].argmax()),
+            int(item["record"]["label"]),
+        }
         candidates = [
             index for index in range(option_count) if index not in protected
         ]
@@ -1008,33 +1037,76 @@ def choice_stress_report(model, tokenizer, records: list[dict], device: str,
         model, tokenizer,
         [variant["packed"] for variant in removal_variants], device, batch,
     ) if removal_variants else []
-    removal_values = defaultdict(list)
-    for variant, logits in zip(removal_variants, removal_logits):
-        unit_index = variant["unit_index"]
-        keep = variant["keep"]
-        probabilities = torch.softmax(
-            logits.to(torch.float64) / temperature, -1,
-        )
-        baseline = base_probabilities[unit_index]
-        survivor_baseline = baseline[keep]
-        survivor_baseline = survivor_baseline / survivor_baseline.sum()
-        baseline_top = int(baseline.argmax())
-        removal_values[unit_index].append({
-            "agreement": int(keep[int(probabilities.argmax())] == baseline_top),
-            "tv": float(
-                0.5 * (survivor_baseline - probabilities).abs().sum()
-            ),
-        })
-    removal_rows = []
-    for unit_index, values in removal_values.items():
-        item = packed_units[unit_index][0]
-        removal_rows.append({
-            "track": item["meta"]["track"],
-            "source": item["meta"]["source"],
-            "variants": len(values),
-            "agreement": _mean([value["agreement"] for value in values]),
-            "mean_tv": _mean([value["tv"] for value in values]),
-        })
+
+    def summaries(scale: float) -> tuple[dict, dict]:
+        base_probabilities = [
+            torch.softmax(logits.to(torch.float64) / scale, -1)
+            for logits in base_logits
+        ]
+        permutation_values = defaultdict(list)
+        for variant, logits in zip(permutation_variants, permutation_logits):
+            unit_index = variant["unit_index"]
+            order = variant["order"]
+            probabilities = torch.softmax(
+                logits.to(torch.float64) / scale, -1,
+            )
+            aligned = torch.empty_like(probabilities)
+            for new_index, original_index in enumerate(order):
+                aligned[original_index] = probabilities[new_index]
+            baseline = base_probabilities[unit_index]
+            permutation_values[unit_index].append({
+                "agreement": int(base_logits[unit_index].argmax()
+                                 == logits[torch.tensor(order).argsort()].argmax()),
+                "tv": float(0.5 * (baseline - aligned).abs().sum()),
+            })
+        permutation_rows = []
+        for unit_index, values in permutation_values.items():
+            item = packed_units[unit_index][0]
+            permutation_rows.append({
+                "track": item["meta"]["track"],
+                "source": item["meta"]["source"],
+                "variants": len(values),
+                "agreement": _mean([
+                    value["agreement"] for value in values
+                ]),
+                "mean_tv": _mean([value["tv"] for value in values]),
+            })
+
+        removal_values = defaultdict(list)
+        for variant, logits in zip(removal_variants, removal_logits):
+            unit_index = variant["unit_index"]
+            keep = variant["keep"]
+            probabilities = torch.softmax(
+                logits.to(torch.float64) / scale, -1,
+            )
+            baseline = base_probabilities[unit_index]
+            survivor_baseline = baseline[keep]
+            survivor_baseline = survivor_baseline / survivor_baseline.sum()
+            baseline_top = int(base_logits[unit_index].argmax())
+            removal_values[unit_index].append({
+                "agreement": int(
+                    keep[int(logits.argmax())] == baseline_top
+                ),
+                "tv": float(
+                    0.5 * (survivor_baseline - probabilities).abs().sum()
+                ),
+            })
+        removal_rows = []
+        for unit_index, values in removal_values.items():
+            item = packed_units[unit_index][0]
+            removal_rows.append({
+                "track": item["meta"]["track"],
+                "source": item["meta"]["source"],
+                "variants": len(values),
+                "agreement": _mean([
+                    value["agreement"] for value in values
+                ]),
+                "mean_tv": _mean([value["tv"] for value in values]),
+            })
+        return _grouped_stress(permutation_rows), _grouped_stress(removal_rows)
+
+    raw_permutation, raw_removal = summaries(1.0)
+    scaled_permutation, scaled_removal = summaries(temperature)
 
     return {
         "status": "ok",
@@ -1049,14 +1121,16 @@ def choice_stress_report(model, tokenizer, records: list[dict], device: str,
         ),
         "permutation": {
             "requested_variants_per_record": permutations,
-            **_grouped_stress(permutation_rows),
+            "raw": raw_permutation,
+            "temperature_scaled": scaled_permutation,
         },
         "option_removal": {
             "requested_variants_per_record": removals_per_record,
             "protected_options": "gold label and baseline top prediction",
             "skipped_binary": skipped_binary,
             "skipped_no_controlled_removal": skipped_no_controlled_removal,
-            **_grouped_stress(removal_rows),
+            "raw": raw_removal,
+            "temperature_scaled": scaled_removal,
         },
     }
 
@@ -1082,6 +1156,7 @@ def _latency_distribution(milliseconds: list[float], batch_size: int) -> dict:
         "records_per_second": (
             1000.0 * batch_size / statistics.fmean(milliseconds)
         ),
+        "raw_ms": milliseconds,
     }
 
 
@@ -1102,100 +1177,164 @@ def _time_operations(operations: list, warmup: int, device: str) -> list[float]:
     return measured
 
 
-def latency_report(model, tokenizer, records: list[dict], device: str,
+def latency_report(model, tokenizer, predictions: list[dict], device: str,
                    max_len: int, inference_batch: int, seed: int,
                    max_records: int, warmup: int,
-                   repetitions: int) -> dict:
+                   repetitions: int, independent_runs: int) -> dict:
     """Measure model-only and packing-inclusive latency on a frozen workload."""
     import torch
     from .model import collate, pack_question
 
     if (inference_batch <= 0 or max_records <= 0 or warmup < 0
-            or repetitions <= 0):
+            or repetitions <= 0 or independent_runs <= 0):
         raise ValueError("latency configuration contains a nonpositive count")
-    units = independent_formal_units(records)
-    units.sort(key=lambda item: digest_value({
+    units = independent_formal_units(predictions)
+    eligible = [
+        item for item in units
+        if item.get("status") == "ok" and item.get("packed_tokens") is not None
+    ]
+    eligible.sort(key=lambda item: digest_value({
         "seed": seed,
         "operation": "latency-workload",
         "record": item["meta"]["record_sha256"],
     }))
+    selected_by_digest = {}
+
+    def select(item: dict | None, stratum: str) -> None:
+        if item is None:
+            return
+        identity = item["meta"]["record_sha256"]
+        if identity not in selected_by_digest and len(selected_by_digest) >= max_records:
+            return
+        selected_by_digest.setdefault(identity, {
+            "item": item, "strata": set(),
+        })["strata"].add(stratum)
+
+    select(next((item for item in eligible
+                 if item["record"]["type"] == "noul"), None), "noul")
+    select(next((item for item in eligible
+                 if item["record"]["type"] == "score"), None), "score")
+    choices = [item for item in eligible if item["record"]["type"] == "choice"]
+    select(min(
+        choices,
+        key=lambda item: (
+            -len(item["record"]["options"]),
+            item["meta"]["record_sha256"],
+        ),
+    ) if choices else None, "highest-option-count-choice")
+    select(max(
+        eligible,
+        key=lambda item: (
+            item["packed_tokens"], item["meta"]["record_sha256"],
+        ),
+    ) if eligible else None, "longest-context")
+    for item in eligible:
+        select(item, "digest-selected-mixture")
+        if len(selected_by_digest) == max_records:
+            break
+
     selected = []
-    rejected = 0
-    for item in units:
+    for descriptor in selected_by_digest.values():
+        item = descriptor["item"]
         packed = pack_question(
             tokenizer, item["record"]["state"],
             item["record"]["instructions"], item["record"]["options"],
             max_len,
         )
         if packed is None:
-            rejected += 1
-            continue
-        selected.append((item, packed))
-        if len(selected) == max_records:
-            break
+            raise RuntimeError("latency workload changed from accepted to rejected")
+        if len(packed[0]) != item["packed_tokens"]:
+            raise RuntimeError("latency workload token count changed after inference")
+        selected.append((item, packed, sorted(descriptor["strata"])))
     if not selected:
         return {
             "status": "not_applicable", "submitted": len(units),
-            "rejected_context": rejected,
+            "eligible": 0,
         }
 
-    token_lengths = [len(packed[0]) for _, packed in selected]
-    option_counts = [len(packed[1]) for _, packed in selected]
+    token_lengths = [len(packed[0]) for _, packed, _ in selected]
+    option_counts = [len(packed[1]) for _, packed, _ in selected]
     workload_descriptor = [{
         "record_sha256": item["meta"]["record_sha256"],
         "track": item["meta"]["track"],
+        "source": item["meta"]["source"],
+        "primitive": item["record"]["type"],
+        "language": item["meta"]["language"],
         "tokens": len(packed[0]),
         "options": len(packed[1]),
-    } for item, packed in selected]
+        "strata": strata,
+    } for item, packed, strata in selected]
     results = {}
     for requested_batch in sorted({1, inference_batch}):
         batch_size = min(requested_batch, len(selected))
-        trial_count = warmup + repetitions
-        scheduled = []
-        for trial in range(trial_count):
-            start = (trial * batch_size) % len(selected)
-            indexes = [
-                (start + offset) % len(selected) for offset in range(batch_size)
-            ]
-            scheduled.append(indexes)
-
-        model_batches = [
-            _collate_packed(
-                tokenizer, [selected[index][1] for index in indexes],
-            )
-            for indexes in scheduled
-        ]
-        for collated_batch in model_batches:
-            for name in ("input_ids", "attention_mask", "option_pos", "group_ptr"):
-                collated_batch[name] = collated_batch[name].to(device)
-        model_operations = [
-            (lambda collated_batch=collated_batch:
-             _run_collated(model, collated_batch, device))
-            for collated_batch in model_batches
-        ]
-        end_to_end_operations = [
-            (lambda indexes=indexes: _run_collated(
-                model,
-                collate(
+        scopes = {"model_only": [], "packing_and_model": []}
+        for run_index in range(independent_runs):
+            trial_count = warmup + repetitions
+            scheduled = []
+            for trial in range(trial_count):
+                start = (
+                    (run_index * trial_count + trial) * batch_size
+                ) % len(selected)
+                scheduled.append([
+                    (start + offset) % len(selected)
+                    for offset in range(batch_size)
+                ])
+            model_batches = [
+                _collate_packed(
                     tokenizer,
-                    [selected[index][0]["record"] for index in indexes],
-                    max_len,
-                ),
-                device,
-            ))
-            for indexes in scheduled
-        ]
-        model_times = _time_operations(model_operations, warmup, device)
-        end_to_end_times = _time_operations(
-            end_to_end_operations, warmup, device,
-        )
-        results[str(batch_size)] = {
-            "model_only": _latency_distribution(model_times, batch_size),
-            "packing_and_model": _latency_distribution(
-                end_to_end_times, batch_size,
-            ),
-        }
-        del model_batches
+                    [selected[index][1] for index in indexes],
+                )
+                for indexes in scheduled
+            ]
+            for collated_batch in model_batches:
+                for name in (
+                    "input_ids", "attention_mask", "option_pos", "group_ptr",
+                ):
+                    collated_batch[name] = collated_batch[name].to(device)
+            model_operations = [
+                (lambda collated_batch=collated_batch:
+                 _run_collated(model, collated_batch, device))
+                for collated_batch in model_batches
+            ]
+            end_to_end_operations = [
+                (lambda indexes=indexes: _run_collated(
+                    model,
+                    collate(
+                        tokenizer,
+                        [selected[index][0]["record"] for index in indexes],
+                        max_len,
+                    ),
+                    device,
+                ))
+                for indexes in scheduled
+            ]
+            if run_index % 2 == 0:
+                scopes["model_only"].append(
+                    _time_operations(model_operations, warmup, device)
+                )
+                scopes["packing_and_model"].append(
+                    _time_operations(end_to_end_operations, warmup, device)
+                )
+            else:
+                end_to_end_times = _time_operations(
+                    end_to_end_operations, warmup, device,
+                )
+                model_times = _time_operations(
+                    model_operations, warmup, device,
+                )
+                scopes["model_only"].append(model_times)
+                scopes["packing_and_model"].append(end_to_end_times)
+            del model_batches
+        results[str(batch_size)] = {}
+        for scope, run_samples in scopes.items():
+            flattened = [value for samples in run_samples for value in samples]
+            results[str(batch_size)][scope] = {
+                "aggregate": _latency_distribution(flattened, batch_size),
+                "independent_runs": [
+                    _latency_distribution(samples, batch_size)
+                    for samples in run_samples
+                ],
+            }
 
     memory = None
     if device == "mps":
@@ -1207,15 +1346,26 @@ def latency_report(model, tokenizer, records: list[dict], device: str,
     return {
         "status": "ok",
         "submitted": len(units),
-        "rejected_context_before_selection": rejected,
+        "eligible": len(eligible),
         "workload_records": len(selected),
         "workload_sha256": digest_value(workload_descriptor),
-        "selection": (
-            "smallest SHA-256 of seed, operation, and record digest among "
-            "independent formal units"
-        ),
+        "workload_manifest": workload_descriptor,
+        "selection": "predeclared strata followed by digest-selected mixture",
         "warmup_trials": warmup,
         "measured_trials": repetitions,
+        "independent_runs": independent_runs,
+        "timed_scopes": {
+            "model_only": "pretokenized and resident input tensors plus model",
+            "packing_and_model": (
+                "tokenization, dynamic collation, device transfer, and model"
+            ),
+            "excluded": "checkpoint loading and HTTP transport",
+            "order": "alternated between independent runs",
+        },
+        "request_semantics": (
+            "each batch entry is one independent question; this is not an HTTP "
+            "or shared-state multi-question latency measurement"
+        ),
         "synchronization": (
             "torch.mps.synchronize before and after every timed MPS trial"
             if device == "mps" else "synchronous CPU execution"
@@ -1241,8 +1391,16 @@ def latency_report(model, tokenizer, records: list[dict], device: str,
             "machine": platform.machine(),
             "processor": platform.processor(),
             "torch_threads": torch.get_num_threads(),
+            "model_dtype": str(next(model.parameters()).dtype),
+            "attention_implementation": getattr(
+                model.backbone.config, "_attn_implementation", None,
+            ),
             "mps_available": bool(torch.backends.mps.is_available()),
             "mps_memory": memory,
+            "host_state_requirement": (
+                "run on an idle host with no trainer or competing accelerator "
+                "workload; power and thermal state are not machine-verified"
+            ),
         },
     }
 
@@ -1359,8 +1517,9 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
                batch: int, alpha: float, thresholds: list[float],
                confidence: float = 0.95, stress_seed: int = 20260921,
                permutations: int = 3, removals_per_record: int = 1,
-               latency_records: int = 64, latency_warmup: int = 3,
-               latency_repetitions: int = 20) -> dict:
+               latency_records: int = 64, latency_warmup: int = 30,
+               latency_repetitions: int = 200,
+               latency_independent_runs: int = 3) -> dict:
     from .calibrate import save_temperature_artifact
     from .checkpoint import load_completed_checkpoint
 
@@ -1376,7 +1535,7 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
         raise ValueError("selective thresholds must be unique values in [0, 1]")
     if (permutations <= 0 or removals_per_record <= 0
             or latency_records <= 0 or latency_warmup < 0
-            or latency_repetitions <= 0):
+            or latency_repetitions <= 0 or latency_independent_runs <= 0):
         raise ValueError("stress and latency counts must be positive")
     plan = load_plan(plan_dir)
     _, run, manifest = load_completed_checkpoint(run_dir)
@@ -1428,6 +1587,10 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
             "alpha": alpha,
             "role": "B",
             "unit": "one deterministic question per parent and formal cell",
+            "target": (
+                "stored hard label; for soft-label sources this is the declared "
+                "majority or consensus label, not an individual annotation"
+            ),
             "thresholds_by_cell": conformal,
             "predictions": b_file,
         },
@@ -1459,6 +1622,7 @@ def fit_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
             "max_records": latency_records,
             "warmup_trials": latency_warmup,
             "measured_trials": latency_repetitions,
+            "independent_runs": latency_independent_runs,
             "batch_sizes": sorted({1, batch}),
             "modes": ["model_only", "packing_and_model"],
         },
@@ -1558,6 +1722,7 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
     correct, confidences, hard_labels, predicted_labels = [], [], [], []
     rps, expected_mae = [], []
     yes_probabilities, yes_targets = [], []
+    ordinal_thresholds = defaultdict(lambda: ([], []))
     option_counts = set()
     clustered = defaultdict(lambda: defaultdict(list))
     accepted = [item for item in predictions if item["status"] == "ok"]
@@ -1597,6 +1762,13 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
             expected_mae.append(abs(float((probabilities * levels).sum()) - label))
             clustered["ranked_probability_score"][parent].append(rps[-1])
             clustered["expected_index_mae"][parent].append(expected_mae[-1])
+            for threshold, (predicted_cumulative, target_cumulative) in enumerate(
+                    zip(cumulative_probability, cumulative_target)):
+                predicted_values, target_values = ordinal_thresholds[
+                    (logits.numel(), threshold)
+                ]
+                predicted_values.append(float(predicted_cumulative))
+                target_values.append(float(target_cumulative))
         if prediction["record"]["type"] == "noul":
             yes_probabilities.append(float(probabilities[0]))
             yes_targets.append(float(target[0]))
@@ -1638,6 +1810,15 @@ def metric_summary(predictions: list[dict], temperature: float) -> dict:
     if rps:
         result["ranked_probability_score"] = _mean(rps)
         result["expected_index_mae"] = _mean(expected_mae)
+        result["ordinal_threshold_reliability"] = {
+            f"K={option_count}:Y<={threshold}": reliability_bins(
+                predicted_values, target_values,
+            )
+            for (option_count, threshold),
+            (predicted_values, target_values) in sorted(
+                ordinal_thresholds.items()
+            )
+        }
     if yes_probabilities:
         result["yes_probability_reliability"] = reliability_bins(
             yes_probabilities, yes_targets,
@@ -1683,6 +1864,98 @@ def grouped_metric_report(predictions: list[dict], temperature: float) -> dict:
     return report
 
 
+def baseline_metric_reports(predictions: list[dict],
+                            training_priors: dict) -> dict:
+    uniform, empirical = [], []
+    empirical_available = 0
+    for prediction in predictions:
+        uniform_item = dict(prediction)
+        empirical_item = dict(prediction)
+        if prediction["status"] != "ok":
+            uniform.append(uniform_item)
+            empirical.append(empirical_item)
+            continue
+        option_count = len(prediction["record"]["options"])
+        uniform_item["logits"] = [0.0] * option_count
+        uniform.append(uniform_item)
+        prior = training_priors.get(ontology_digest(prediction["record"]))
+        if (prior is None
+                or len(prior.get("probabilities", [])) != option_count):
+            empirical_item["status"] = "training_prior_not_available"
+            empirical_item["logits"] = None
+        else:
+            empirical_available += 1
+            empirical_item["logits"] = [
+                math.log(probability)
+                for probability in prior["probabilities"]
+            ]
+        empirical.append(empirical_item)
+    return {
+        "uniform": {
+            "description": "equal probability over each record's options",
+            "metrics": grouped_metric_report(uniform, 1.0),
+        },
+        "training_only_empirical_prior": {
+            "description": (
+                "add-one-smoothed target frequencies from consumed training "
+                "records with an exact source, primitive, and option ontology"
+            ),
+            "available": empirical_available,
+            "submitted": len(predictions),
+            "metrics": grouped_metric_report(empirical, 1.0),
+        },
+    }
+
+
+def paired_temperature_differences(predictions: list[dict],
+                                   temperature: float) -> dict:
+    import torch
+    import torch.nn.functional as functional
+
+    differences = defaultdict(list)
+    clustered = defaultdict(lambda: defaultdict(list))
+    for prediction in predictions:
+        if prediction["status"] != "ok":
+            continue
+        logits = torch.tensor(prediction["logits"], dtype=torch.float64)
+        target = target_distribution(prediction["record"], logits.numel())
+        raw_log = functional.log_softmax(logits, -1)
+        scaled_log = functional.log_softmax(logits / temperature, -1)
+        raw_probability = raw_log.exp()
+        scaled_probability = scaled_log.exp()
+        values = {
+            "nll": float(
+                -(target * scaled_log).sum() + (target * raw_log).sum()
+            ),
+            "brier_histogram": float(
+                ((scaled_probability - target) ** 2).sum()
+                - ((raw_probability - target) ** 2).sum()
+            ),
+            "brier_annotation": float(
+                (scaled_probability ** 2).sum()
+                - 2.0 * (scaled_probability * target).sum()
+                - (raw_probability ** 2).sum()
+                + 2.0 * (raw_probability * target).sum()
+            ),
+        }
+        parent = prediction["meta"]["parent_id"]
+        for metric, value in values.items():
+            differences[metric].append(value)
+            clustered[metric][parent].append(value)
+    return {
+        "definition": "temperature_scaled minus raw; negative favors scaling",
+        "n": len(next(iter(differences.values()), [])),
+        "mean_difference": {
+            metric: _mean(values) for metric, values in differences.items()
+        },
+        "parent_cluster_bootstrap_ci95": {
+            metric: cluster_bootstrap_interval(values)
+            for metric, values in clustered.items()
+            if len(values) >= 2
+        },
+    }
+
+
 def conformal_report(predictions: list[dict], policy: dict,
                      temperature: float) -> dict:
     from .calibrate import prediction_set
@@ -1699,7 +1972,7 @@ def conformal_report(predictions: list[dict], policy: dict,
                 "status": "not_predeclared", "submitted": len(values),
             }
             continue
-        sizes, covered = [], []
+        sizes, normalized_sizes, covered = [], [], []
         rejected = 0
         for prediction in values:
             if prediction["status"] != "ok":
@@ -1712,6 +1985,9 @@ def conformal_report(predictions: list[dict], policy: dict,
                 else prediction_set(probabilities, descriptor["q"])
             )
             sizes.append(len(selected))
+            normalized_sizes.append(
+                len(selected) / probabilities.numel()
+            )
             covered.append(int(prediction["record"]["label"] in selected))
         if not sizes:
             result[cell] = {
@@ -1720,6 +1996,7 @@ def conformal_report(predictions: list[dict], policy: dict,
             }
             continue
         ordered_sizes = sorted(sizes)
+        ordered_normalized_sizes = sorted(normalized_sizes)
         p90_index = min(len(sizes) - 1, math.ceil(0.9 * len(sizes)) - 1)
         result[cell] = {
             "status": "ok",
@@ -1730,6 +2007,11 @@ def conformal_report(predictions: list[dict], policy: dict,
             "mean_set_size": _mean(sizes),
             "median_set_size": ordered_sizes[len(sizes) // 2],
             "p90_set_size": ordered_sizes[p90_index],
+            "mean_normalized_set_size": _mean(normalized_sizes),
+            "median_normalized_set_size": ordered_normalized_sizes[
+                len(normalized_sizes) // 2
+            ],
+            "p90_normalized_set_size": ordered_normalized_sizes[p90_index],
             "empty_rate": sum(size == 0 for size in sizes) / len(sizes),
             "singleton_rate": sum(size == 1 for size in sizes) / len(sizes),
             "full_set_rate": sum(
@@ -1834,11 +2116,12 @@ def evaluate_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
             stress_policy["removals_per_record"],
         )
         latency = latency_report(
-            model, tokenizer, role_c, device,
+            model, tokenizer, predictions, device,
             int(checkpoint["config"]["max_len"]), batch,
             latency_policy["seed"], latency_policy["max_records"],
             latency_policy["warmup_trials"],
             latency_policy["measured_trials"],
+            latency_policy["independent_runs"],
         )
     finally:
         del model
@@ -1860,6 +2143,12 @@ def evaluate_policy(plan_dir: str | Path, run_dir: str | Path, device: str,
                 predictions, temperature,
             ),
         },
+        "baselines": baseline_metric_reports(
+            predictions, plan["training_only_priors"]["values"],
+        ),
+        "paired_temperature_differences": paired_temperature_differences(
+            predictions, temperature,
+        ),
         "conformal": conformal_report(predictions, policy, temperature),
         "selective_risk": selective_risk_report(
             predictions, policy, temperature,
@@ -1902,8 +2191,9 @@ def main() -> None:
     fit_parser.add_argument("--permutations", type=int, default=3)
     fit_parser.add_argument("--removals-per-record", type=int, default=1)
     fit_parser.add_argument("--latency-records", type=int, default=64)
-    fit_parser.add_argument("--latency-warmup", type=int, default=3)
-    fit_parser.add_argument("--latency-repetitions", type=int, default=20)
+    fit_parser.add_argument("--latency-warmup", type=int, default=30)
+    fit_parser.add_argument("--latency-repetitions", type=int, default=200)
+    fit_parser.add_argument("--latency-independent-runs", type=int, default=3)
     evaluate_parser = commands.add_parser("evaluate")
     evaluate_parser.add_argument("--plan", required=True)
     evaluate_parser.add_argument("--run-dir", required=True)
@@ -1939,6 +2229,7 @@ def main() -> None:
             latency_records=args.latency_records,
             latency_warmup=args.latency_warmup,
             latency_repetitions=args.latency_repetitions,
+            latency_independent_runs=args.latency_independent_runs,
         )
         print(json.dumps({
             "policy_sha256": policy["policy_sha256"],

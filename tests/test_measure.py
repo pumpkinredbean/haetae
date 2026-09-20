@@ -8,12 +8,14 @@ from unittest import mock
 
 from haetae.measure import (
     TrackSpec,
+    baseline_metric_reports,
     choice_stress_report,
     conformal_by_cell,
     fit_source_balanced_temperature,
     freeze_track,
     independent_formal_units,
     metric_summary,
+    ontology_digest,
     prepare,
     reorder_packed,
     selective_risk_report,
@@ -237,14 +239,17 @@ class MeasurementMetricTest(unittest.TestCase):
             removals_per_record=1,
         )
         self.assertEqual(
-            report["permutation"]["all"]["semantic_top1_agreement"], 1.0
+            report["permutation"]["raw"]["all"]
+            ["semantic_top1_agreement"], 1.0
         )
         self.assertAlmostEqual(
-            report["permutation"]["all"]["mean_total_variation"], 0.0
+            report["permutation"]["raw"]["all"]["mean_total_variation"],
+            0.0,
         )
         self.assertEqual(report["option_removal"]["skipped_binary"], 1)
         self.assertEqual(
-            report["option_removal"]["all"]["semantic_top1_agreement"], 1.0
+            report["option_removal"]["raw"]["all"]
+            ["semantic_top1_agreement"], 1.0
         )
 
     def test_nll_uses_stable_logits_without_probability_floor(self):
@@ -262,6 +267,29 @@ class MeasurementMetricTest(unittest.TestCase):
         ], temperature=1.0)
         self.assertAlmostEqual(summary["brier_histogram"], 0.0, places=12)
         self.assertAlmostEqual(summary["brier_annotation"], 0.48, places=12)
+
+    def test_score_metrics_include_each_ordinal_threshold(self):
+        summary = metric_summary([
+            prediction(1, [0.0, 1.0, 2.0], 2, type_="score"),
+        ], temperature=1.0)
+        self.assertEqual(
+            set(summary["ordinal_threshold_reliability"]),
+            {"K=3:Y<=0", "K=3:Y<=1"},
+        )
+
+    def test_baselines_use_uniform_and_matching_training_ontology(self):
+        item = prediction(1, [2.0, 0.0], 0)
+        identity = ontology_digest(item["record"])
+        reports = baseline_metric_reports([item], {
+            identity: {"probabilities": [0.75, 0.25]},
+        })
+        self.assertEqual(
+            reports["training_only_empirical_prior"]["available"], 1
+        )
+        self.assertAlmostEqual(
+            reports["uniform"]["metrics"]["all"]["nll"],
+            0.6931471805599453,
+        )
 
     def test_temperature_fit_uses_soft_targets_and_source_balance(self):
         import math
