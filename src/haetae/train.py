@@ -27,9 +27,14 @@ def brier(logits, target):
 
 def batch_loss(logit_list, targets, brier_w=0.5):
     """targets: list of soft distributions (hard labels already one-hot)."""
+    assert len(logit_list) == len(targets) and len(logit_list) > 0
     ce, br = 0.0, 0.0
     for logits, t in zip(logit_list, targets):
         t = t.to(logits.device)
+        assert logits.ndim == 1 and t.ndim == 1 and logits.shape == t.shape
+        assert logits.numel() >= 2, "need >=2 options for a decision"
+        assert torch.isfinite(t).all() and (t >= 0).all()
+        assert abs(float(t.sum()) - 1.0) < 1e-3
         logp = F.log_softmax(logits, dim=-1)
         ce = ce - (t * logp).sum()
         br = br + ((F.softmax(logits, -1) - t) ** 2).sum()
@@ -39,10 +44,34 @@ def batch_loss(logit_list, targets, brier_w=0.5):
 
 def to_target(rec, n):
     if rec["soft"] is not None:
-        return torch.tensor(rec["soft"], dtype=torch.float)
+        t = torch.tensor(rec["soft"], dtype=torch.float)
+        assert t.numel() == n
+        return t
+    assert rec["label"] is not None and 0 <= rec["label"] < n
     t = torch.zeros(n)
     t[rec["label"]] = 1.0
     return t
+
+
+def permute_choice(rec, rng):
+    """Candidate-order augmentation for choice records.
+
+    The packed model is not permutation-equivariant (rotary positions,
+    local-attention neighborhoods), and several sources always use the
+    same option order — without this the model can learn 'this task's
+    second slot'. Score keeps ordinal order; noul keeps 'yes' first.
+    """
+    if rec["type"] != "choice" or len(rec["options"]) < 3:
+        return rec
+    perm = list(range(len(rec["options"])))
+    rng.shuffle(perm)
+    out = dict(rec)
+    out["options"] = [rec["options"][j] for j in perm]
+    if rec["soft"] is not None:
+        out["soft"] = [rec["soft"][j] for j in perm]
+    if rec["label"] is not None:
+        out["label"] = perm.index(rec["label"])
+    return out
 
 
 def main():
@@ -72,33 +101,53 @@ def main():
     for name in args.sources.split(","):
         name = name.strip()
         rows = list(LOADERS[name](split="train", limit=args.per_source + args.eval_per_source))
-        random.shuffle(rows)
-        val += rows[: args.eval_per_source]
-        train += rows[args.eval_per_source:]
+        # Split by parent state, not by emitted question: expanded
+        # records (e.g. helpsteer2's five scores per prompt) must not
+        # straddle the split.
+        parents = {}
+        for r in rows:
+            parents.setdefault(r.get("parent", id(r)), []).append(r)
+        keys = list(parents)
+        random.shuffle(keys)
+        n_val_parents = max(1, int(len(keys) * args.eval_per_source /
+                                   (args.per_source + args.eval_per_source)))
+        for k in keys[:n_val_parents]:
+            val += parents[k]
+        for k in keys[n_val_parents:]:
+            train += parents[k]
         print(f"{name}: {len(rows) - min(len(rows), args.eval_per_source)} train / "
               f"{min(len(rows), args.eval_per_source)} val")
     random.shuffle(train)
 
-    decay, no_decay = [], []
-    for n_, p in model.named_parameters():
-        (no_decay if p.ndim <= 1 or "head" in n_ else decay).append(p)
+    backbone_decay, backbone_no_decay = [], []
+    for p in model.backbone.parameters():
+        if p.requires_grad:
+            (backbone_no_decay if p.ndim <= 1 else backbone_decay).append(p)
+    head_params = [p for p in model.head.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(
-        [{"params": decay, "lr": args.lr, "weight_decay": 0.01},
-         {"params": model.head.parameters(), "lr": args.head_lr, "weight_decay": 0.0}],
+        [{"params": backbone_decay, "lr": args.lr, "weight_decay": 0.01},
+         {"params": backbone_no_decay, "lr": args.lr, "weight_decay": 0.0},
+         {"params": head_params, "lr": args.head_lr, "weight_decay": 0.0}],
         lr=args.lr)
+    expected = {id(p) for p in model.parameters() if p.requires_grad}
+    actual = [id(p) for g in opt.param_groups for p in g["params"]]
+    assert set(actual) == expected and len(actual) == len(expected)
+    model.train()
     sched = get_cosine_schedule_with_warmup(opt, int(0.06 * args.steps), args.steps)
 
     step = 0
     t0 = time.time()
+    skipped = 0
     while step < args.steps:
         random.shuffle(train)
         for i in range(0, len(train), args.batch):
             if step >= args.steps:
                 break
-            recs = train[i:i + args.batch]
+            recs = [permute_choice(r, random) for r in train[i:i + args.batch]]
             batch = collate(tok, recs, args.max_len)
             if any(batch["dropped_options"]):
                 keep = [r for r, d in zip(recs, batch["dropped_options"]) if not d]
+                skipped += sum(batch["dropped_options"])
                 if not keep:
                     continue
                 recs = keep
@@ -119,7 +168,7 @@ def main():
             step += 1
             if step % 25 == 0:
                 print(f"step {step}/{args.steps} loss {loss.item():.4f} "
-                      f"({(time.time() - t0) / step:.2f}s/step)")
+                      f"({(time.time() - t0) / step:.2f}s/step, skipped {skipped})")
 
     import os
     os.makedirs(args.out, exist_ok=True)

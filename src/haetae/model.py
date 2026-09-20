@@ -25,10 +25,11 @@ from transformers import AutoModel, AutoTokenizer
 def pack_question(tokenizer, state, instructions, options, max_len=8192):
     """Tokenize one packed question.
 
-    Returns input_ids, attention_mask, and the token index of each
-    option's marker [SEP]. All options must survive: when space is
-    tight the *state* is truncated, never the candidate set — a
-    dropped option would silently corrupt the answer space.
+    Returns (input_ids, spans) where spans[i] = (marker, start, end)
+    for option i: the [SEP] preceding it and its own token range.
+    All options must survive whole: when space is tight the *state*
+    is truncated, never the candidate set. If even an empty state
+    cannot fit, the record is unanswerable and flagged by the caller.
     """
     enc_state = tokenizer(state, add_special_tokens=False)["input_ids"]
     enc_instr = tokenizer(instructions, add_special_tokens=False)["input_ids"]
@@ -37,23 +38,19 @@ def pack_question(tokenizer, state, instructions, options, max_len=8192):
     sep = tokenizer.sep_token_id
     cls = tokenizer.cls_token_id
 
-    # Budget: [CLS] + state + [SEP] + instructions + per-option ([SEP]+tokens)
-    tail = sum(1 + len(o) for o in enc_opts)
-    state_budget = max_len - (2 + len(enc_instr) + tail)
-    if state_budget < 0:
-        # Even with an empty state the question+options do not fit.
-        # Truncate instructions, then longest options, as a last resort.
-        enc_instr = enc_instr[: max(0, max_len - 2 - tail)]
-        state_budget = 0
+    tail = sum(1 + len(o) for o in enc_opts)          # [SEP]+tokens per option
+    fixed = 2 + len(enc_instr) + tail                  # [CLS] + [SEP] + the rest
+    if fixed > max_len:
+        return None                                   # unanswerable: options would be cut
+    state_budget = max_len - fixed
     ids = [cls] + enc_state[:state_budget] + [sep] + enc_instr
-    option_pos = []
+    spans = []
     for opt in enc_opts:
         ids.append(sep)
-        option_pos.append(len(ids) - 1)
+        marker = len(ids) - 1
         ids += opt
-    ids = ids[:max_len]
-    option_pos = [p for p in option_pos if p < max_len]
-    return ids, option_pos
+        spans.append((marker, marker + 1, len(ids)))
+    return ids, spans
 
 
 class HaetaeModel(nn.Module):
@@ -86,23 +83,24 @@ def collate(tokenizer, records, max_len=8192):
     """Pack a list of records into model inputs (dynamic padding)."""
     packed = [pack_question(tokenizer, r["state"], r["instructions"],
                             r["options"], max_len) for r in records]
-    dropped = [len(p) != len(r["options"]) for (ids, p), r in zip(packed, records)]
+    dropped = [p is None for p in packed]
+    packed = [p if p is not None else ([], []) for p in packed]
     maxlen = max(len(ids) for ids, _ in packed)
     B = len(packed)
     input_ids = torch.full((B, maxlen), tokenizer.pad_token_id, dtype=torch.long)
     attn = torch.zeros((B, maxlen), dtype=torch.long)
     flat_pos, group_ptr = [], [0]
-    for b, (ids, pos) in enumerate(packed):
+    for b, (ids, spans) in enumerate(packed):
         input_ids[b, : len(ids)] = torch.tensor(ids)
         attn[b, : len(ids)] = 1
-        flat_pos += [b * maxlen + p for p in pos]
-        group_ptr.append(group_ptr[-1] + len(pos))
+        flat_pos += [b * maxlen + m for m, _, _ in spans]
+        group_ptr.append(group_ptr[-1] + len(spans))
     return {
         "input_ids": input_ids,
         "attention_mask": attn,
         "option_pos": torch.tensor(flat_pos, dtype=torch.long),
         "group_ptr": torch.tensor(group_ptr, dtype=torch.long),
-        "n_options": [len(p) for _, p in packed],
+        "n_options": [len(s) for _, s in packed],
         "dropped_options": dropped,
     }
 
@@ -110,7 +108,7 @@ def collate(tokenizer, records, max_len=8192):
 def confidence_from_probs(probs: torch.Tensor) -> float:
     """1 - H(p)/ln K : 1 when certain, 0 when uniform. Jev-compatible shape."""
     k = probs.numel()
-    if k <= 1:
-        return 1.0
+    if k < 2:
+        raise ValueError("confidence needs a distribution over >=2 options")
     h = -(probs * probs.clamp_min(1e-9).log()).sum().item()
     return max(0.0, min(1.0, 1.0 - h / torch.log(torch.tensor(float(k))).item()))

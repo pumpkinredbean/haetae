@@ -13,32 +13,43 @@ import torch.nn.functional as F
 
 
 def fit_temperature(logits_list, labels):
-    """Single scalar T minimizing NLL on held-out data."""
-    T = torch.tensor(1.0, requires_grad=True)
-    opt = torch.optim.LBFGS([T], lr=0.05, max_iter=100)
-    labels = torch.tensor(labels)
+    """Single scalar T minimizing NLL on held-out data.
+
+    Optimized in log space so T stays positive. Logits are [K]
+    tensors; labels are scalar class indices.
+    """
+    log_T = torch.tensor(0.0, requires_grad=True)
+    opt = torch.optim.LBFGS([log_T], lr=0.05, max_iter=100)
+    logits_list = [l.detach().float().cpu() for l in logits_list]
+    labels = [int(y) for y in labels]
 
     def closure():
         opt.zero_grad()
-        loss = sum(F.cross_entropy(l / T, y.unsqueeze(0))
+        T = log_T.exp()
+        loss = sum(F.cross_entropy((l / T).unsqueeze(0),
+                                   torch.tensor([y]))
                    for l, y in zip(logits_list, labels)) / len(logits_list)
         loss.backward()
         return loss
 
     opt.step(closure)
-    return float(T.detach())
+    return float(log_T.detach().exp())
 
 
 def conformal_threshold(probs_list, labels, alpha=0.1):
     """Split-conformal quantile of nonconformity 1 - p[true].
 
     Returns q: prediction sets {k : p_k >= 1 - q} have >= 1-alpha
-    marginal coverage.
+    marginal coverage. Rank is ceil((n+1)(1-alpha)); beyond n the
+    guarantee requires the full set (q = inf).
     """
+    import math
+
+    n = len(probs_list)
+    assert n > 0 and 0 < alpha < 1
     scores = sorted(1.0 - float(p[y]) for p, y in zip(probs_list, labels))
-    n = len(scores)
-    k = min(n - 1, int((n + 1) * (1 - alpha)) - 1)
-    return scores[max(0, k)]
+    rank = math.ceil((n + 1) * (1 - alpha))
+    return math.inf if rank > n else scores[rank - 1]
 
 
 def prediction_set(probs, q):
@@ -56,8 +67,11 @@ def binomial_upper_bound(errors, n, confidence=0.95):
 
     if n == 0:
         return 1.0
+    assert 0 <= errors <= n
     if errors == 0:
         return 1.0 - (1.0 - confidence) ** (1.0 / n)
+    if errors == n:
+        return 1.0
     return float(beta.ppf(confidence, errors + 1, n - errors))
 
 

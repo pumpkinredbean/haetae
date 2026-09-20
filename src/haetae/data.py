@@ -127,7 +127,7 @@ def load_civil_toxicity(split="train", limit=None) -> Iterator[dict]:
             break
         p = float(r["toxicity"])
         yield _row(r["text"], "noul", "Is this comment toxic?",
-                   ["yes", "no"], label=int(p >= 0.5),
+                   ["yes", "no"], label=0 if p >= 0.5 else 1,
                    soft=[p, 1.0 - p], source="civil_toxicity")
 
 
@@ -223,9 +223,11 @@ def load_helpsteer2(split="train", limit=None) -> Iterator[dict]:
             break
         state = f"PROMPT: {r['prompt']}\n\nRESPONSE: {r['response']}"
         for a in attrs:
-            yield _row(state, "score",
+            rec = _row(state, "score",
                        f"Rate the {a} of the response to the prompt.",
                        levels, label=int(r[a]), source=f"helpsteer2_{a}")
+            rec["parent"] = f"hs2-{i}"
+            yield rec
 
 
 def load_arc(split="train", limit=None) -> Iterator[dict]:
