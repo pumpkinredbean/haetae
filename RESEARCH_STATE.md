@@ -274,9 +274,19 @@ The corrected public-only rendered-state audit preserved the existing frozen sui
 
 A real pinned-mmBERT MPS probe completed one effective batch of eight as four microbatches of two. It deliberately paired the six longest 994–1,011-token, 77-option requests and the two longest multi-question requests. The optimizer update took `2.61` seconds; maximum observed driver allocation was `4.38 GB`, `14.52%` of the `30.15 GB` recommended maximum. A real entry-point smoke run then published an interrupt at step 4, restored generation 6 in a fresh process, continued through step 8 with the exact cursor and random state, and published interrupted generation 11. Smoke run ID is `91b2b05b-d116-41b6-a40f-412c76d36020`; generation 11 SHA-256 is `73c14456db412f3e2683b50a00b31b30fa05450eeb6ff73d4c6ef811db4d78d7`.
 
+The fresh shared-state run is scheduled from 2026-09-20 18:18 KST. It performs exactly two request epochs: `ceil(15,572 / 8) * 2 = 3,894` optimizer updates.
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-shared-v1 "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m experiments.train_shared --suite evaluations/shared-v1 --steps 3894 --batch 8 --microbatch 2 --max-len 2048 --device mps --local-files-only --out runs/shared-v1 --save-every 50 --log-every 25 --resume none 2>&1 | tee -a train_shared_v1.log'"
+```
+
+- tmux session: `haetae-shared-v1`
+- log: `/Users/minkyu/workspace/haetae/train_shared_v1.log`
+
 ## Next actions
 
 1. Preserve the validated role C result and use it as the baseline measurement.
 2. Obtain a narrow follow-up check of the external-suite binding fix at `aafd461`.
-3. Start the fresh shared-state MPS run from the frozen recipe.
+3. Complete the fresh shared-state MPS run from the frozen recipe.
 4. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
