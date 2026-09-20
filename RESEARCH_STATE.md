@@ -161,6 +161,7 @@ The replacement run started from clean commit `cfaa7517f26660365259f22f5813a2fc1
 - generation 2 is the first durable training checkpoint at step 50, SHA-256 `53fdd30ff443205a73dc62f0dc095f5800ac7148b3b916085350fba24024cd44`; step 50 loss was 1.3054 with zero rejected batches, and the run continued past step 75;
 - The original tmux server disappeared after logging step 1225 without publishing an interrupt checkpoint. No writer or advisory lock remained, and no checkpoint or disk error was present. Automatic resume validated generation 25 at step 1200 and replayed step 1225 with the same logged loss of 1.1604. A second externally terminated tmux process stopped immediately after publishing generation 46 at step 2250. Automatic resume validated that generation and continued the same run. The later producer digest changed because measurement-only source files changed, while the immutable training-code digest and run specification remained exact.
 - Generation 61 completed step 3000 with zero skipped batches. Its checkpoint SHA-256 is `838bd9802d89aa87599e79876d5cc3737f2f08406d83055706bdd080ba1f2606`, producer SHA-256 is `982c143ce66cee5a54f4779913aebb83fa55d4cfec4716257720df16517a3a14`, and the manifest status is `completed`.
+- The post-completion internal validation scored accuracy `0.597` and unscaled ECE `0.030` over 3,400 questions in 120.6 seconds. KLUE-YNAT was `0.120` and NSMC `0.445`; this is an internal diagnostic, not the frozen external result.
 - the final evaluation population was frozen immediately after start in `evaluations/v3-micro4`. Plan `4e08d1c39757ddcb9f9fff292634fcd28f2ba3c22cecdfa8d8d5a4d143ae66a2` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281. No model result was inspected before this assignment.
 
 ## Frozen measurement protocol
@@ -192,6 +193,17 @@ The metadata-only parent audit reconstructed 19,945 consumed parent keys and ins
 
 ChatGPT 6 Pro returned `MEASUREMENT ACCEPT` for `ee3d22a` and `11a1c62`. Its controlled probes confirmed inclusive conformal ties, frozen-runtime rejection before synthetic C inference, one-time reusable prediction artifacts, separate annotation-target and hard-consensus reliability, parent isolation, semantic tie actions, ontology-safe macro-F1, and Unicode JSONL handling. It did not open real role C or independently verify the production overlap counts.
 
+The accepted role A/B fitting job started at 2026-09-20 17:36 KST. It does not read role C.
+
+```bash
+cd /Users/minkyu/workspace/haetae
+tmux new-session -d -s haetae-v3m4-fit "zsh -lc 'set -o pipefail; PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m haetae.measure fit --plan evaluations/v3-micro4 --run-dir runs/v3-micro4 --device mps --batch 4 2>&1 | tee -a measure_v3_micro4_fit.log'"
+```
+
+- tmux session: `haetae-v3m4-fit`
+- log: `/Users/minkyu/workspace/haetae/measure_v3_micro4_fit.log`
+- expected outputs: `evaluations/v3-micro4/predictions-A.jsonl`, `predictions-B.jsonl`, and `frozen-policy.json`
+
 All 70 repository tests pass. A HelpSteer2 mechanics run exercised A/B/C, five response-attribute cells, forced full conformal sets, selective abstention, and synchronized MPS latency. An AG News mechanics run exercised raw and scaled permutation, controlled removal, baselines, paired metrics, and latency. These are mechanics smokes, not quality results.
 
 An offline preflight loaded every declared remote source at its exact cached commit plus both local Korean files, reconstructed the old full run's 25,500 training and 3,400 internal-validation questions, and froze every registered track without a role leak. At the default 1,600-parent cap per track, plan `e9440dafb69a756a5b8beab3cbc7fbcc72bc13af65a4f99690d05016e0478faf` contains A/B/C record counts 7,973/7,974/15,995 and parent counts 5,147/5,149/10,281.
@@ -206,7 +218,7 @@ An offline preflight loaded every declared remote source at its exact cached com
 - The transfer-v4 development split SHA-256 is `ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e`. Its 764 requests contain one question each, so it measures transfer quality but not multi-question efficiency.
 - The trainer binds suite bytes, model revision, tokenizer, code, optimizer, scheduler, data order, and random state to immutable periodic generations. It averages question losses within a request and then averages requests, uses Choice permutation augmentation, and adds ranked probability score for Score questions.
 - The evaluator fits one source-balanced temperature on the combined calibration partition and reports raw and scaled decision-v7, transfer-v4, and Korean development metrics. Macro-F1 is reported only within one fixed ordered option ontology.
-- ChatGPT 6 Pro returned `SHARED EXPERIMENT HOLD` for commit `080d451` after reproducing two blockers: the custom mask used `local_attention` as a radius instead of `config.sliding_window`, and evaluation converted logits to float64 on MPS before moving them to CPU. Both are corrected in the current working tree. Focused boundary and device-order tests pass; exact-commit re-review remains required before training.
+- ChatGPT 6 Pro returned `SHARED EXPERIMENT HOLD` for commit `080d451` after reproducing two blockers: the custom mask used `local_attention` as a radius instead of `config.sliding_window`, and evaluation converted logits to float64 on MPS before moving them to CPU. Commit `2485f24d4d6aecda857a0c2927f0723b326e13c8` corrects both, adds the frozen v7 and Korean data path, and passes 70 tests plus a native-MPS conversion probe. Exact-commit re-review is active before training.
 
 The Korean comparison suite was frozen before any candidate-model result was inspected:
 
@@ -231,8 +243,8 @@ The combined training suite is frozen at `evaluations/shared-v1`:
 
 ## Next actions
 
-1. Keep the resumed baseline writer alive and verify periodic generations through the completed step 3000 checkpoint.
-2. Push the corrected shared-state implementation and combined-suite freezer, then obtain an exact-commit start decision from ChatGPT 6 Pro.
-3. Fit the accepted frozen baseline policy and evaluate role C after the baseline completes.
+1. Complete the active role A/B policy fit, validate its artifacts, then run the explicitly gated role C evaluation.
+2. Obtain an exact-commit start decision from ChatGPT 6 Pro for `2485f24`.
+3. Run a real shared-state MPS memory and exact-resume smoke after the baseline measurement releases the accelerator.
 4. Start the shared-state MPS run only after its review accepts the implementation and the baseline releases the accelerator.
 5. Compare the completed baseline and shared-state model on the frozen Kev and Korean development suites without opening either locked test during model selection.
