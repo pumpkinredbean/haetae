@@ -138,9 +138,11 @@ uv run python tools/evidence_registry.py verify \
   --out /path/to/verification-report.json
 ```
 
-The verifier checks content digests, sizes, provenance chains, the source-code
-identity, and the absence of locked-test artifacts. See
-[the reproduction guide](docs/reproduction.md) before rerunning any producer.
+The verifier checks content digests, sizes, provenance chains, source-code
+identity, and registered `contains_locked_data: false` attestations. It does
+not inspect arbitrary payloads to independently establish that they contain no
+locked-test examples. See [the reproduction guide](docs/reproduction.md)
+before rerunning any producer.
 
 ## Licensing
 

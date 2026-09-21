@@ -45,7 +45,9 @@ artifacts and `unavailable_optional_count` counts valid optional mappings whose
 files or ancestors are unavailable. Every artifact in the checked-in registry
 attests `contains_locked_data: false`; the verifier validates those registered
 attestations and hashes rather than inspecting arbitrary files for examples.
-Compare `registry_sha256`, `base_commit`, and `reference.sha256` with
+Compare `registry_sha256` with the SHA-256 of the registry's canonical JSON,
+`base_commit` with the registry's `base_commit`, and
+`reference.source_sha256` with `reference_source_identity.sha256` in
 `research/evidence/index.json`.
 
 ## Historical producer
