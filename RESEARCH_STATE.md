@@ -12,6 +12,7 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 
 - Repository: https://github.com/pumpkinredbean/haetae
 - Integration branch: `next/integration`
+- Current release-foundation commit: `b72ebb81d7f0f75eb982d4a53faebe76592b7eeb`.
 - Accepted execution-benchmark code commit: `73d2b49c3d95267b135adbcb3af5f53ede3426d3`
 - Checkpoint format 3 implementation commit: `a30ba8b`
 - Exact-review fix commit: `06b8728`
@@ -41,10 +42,12 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Documentation commit `ae7ba8a26f7554b7f7b3ae297079d142de0b4735` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved. Correction commits `56aaad180e432f6a5dc06911b2357d3dd109a9d0` and `4eba4907293a7c5e17cf5a98cbae19c83ccd0700` align the request interface, token limits, upstream Amazon terms, rights boundary, attribution, metric scope, MPS timing qualification, cached-audit provenance, verifier prerequisites, tooling, and release dependencies with the implementation and evidence.
 - ChatGPT 6 Pro returned `M2D DOCUMENTATION ACCEPT` for exact commit `4eba4907293a7c5e17cf5a98cbae19c83ccd0700`. The final diff contains only the two requested wording corrections: `reference.source_sha256` now matches the verifier output, and the README distinguishes registered `contains_locked_data: false` attestations from independent payload inspection. No model runtime, inference, timing, training, or locked-data access occurred during the final review.
 - Repository foundation audit: shared-v1 generation 79 has 140,593,792 parameters. The verified float32 safetensors release candidate is 562,389,888 bytes; the immutable research checkpoint is 1,687,348,267 bytes because it also carries optimizer and recovery state.
-- The local bundle manifest, tensor inventory, CLI, `/v1/decide`, and `/v1/systemone` paths load and run on CPU. Seventeen release tests and a clean-wheel smoke pass. The package is versioned `0.2.0a1` with separate serving, research, and development dependency groups.
+- The local bundle manifest, tensor inventory, CLI, `/v1/decide`, and `/v1/systemone` paths load and run on CPU. The full suite has 134 passing tests, and an isolated clean-wheel install, CLI import, HTTP-extra import, and real-bundle CPU API smoke pass. The package is versioned `0.2.0a1` with separate serving, research, and development dependency groups.
+- The release foundation now includes GitHub Actions for the locked test suite, maintained release-surface Ruff checks, wheel construction, and isolated wheel installation. The contribution guide uses the same commands and leaves immutable historical producers outside formatting changes.
+- The compatibility API now preserves `yes` and `no` labels when Noul descriptions are present and renders structured state with the same public adapter used for shared-v1 training. The public development population contains 187 described Noul questions and 540 structured-state requests, so both corrections affect supported inputs rather than synthetic edge cases.
 - Generation 79 is not a public open-weight release. Dataset redistribution terms remain unresolved, and the exported runtime still needs the frozen 32-request original-versus-bundle parity review.
 - T04 is complete. T05 received `M4 PAIRED REPLAY HOLD` with seven reproducible execution-boundary defects. No T05 model initialization or optimizer update is authorized.
-- Next actions: review the integrated runtime and repository foundation, complete the frozen 32-request parity gate, merge the accepted foundation to `main`, retire the merged documentation and runtime branches, and only then return to the isolated T05 corrections.
+- Next actions: obtain exact-commit review of the corrected release foundation, freeze and complete the 32-request original-versus-bundle parity gate, merge the accepted foundation to `main`, retire the merged documentation and runtime branches, and stop at that clean repository baseline before returning to the isolated T05 corrections.
 - Status: active.
 
 ## Confirmed model design
