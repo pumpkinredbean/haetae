@@ -22,6 +22,22 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Exact review of commit `a30ba8b`: publication, rotation, AdamW checks, real signal continuation, and epoch rollover passed. Reported semantic-validation, tokenizer-identity, calibration-binding, descriptor-schema, completed-target, recovery-display, and certification-policy findings are fixed in the current working tree.
 - Targeted re-review of exact commit `06b8728`: ChatGPT 6 Pro inspected the complete commit and ran additional malformed-RNG, scheduler, AdamW-counter, tokenizer-identity, exact-resume, stale-directory, descriptor, and completed-target probes. It reported 27 passes and one expected MPS skip in its CPU environment, closed both pre-run blockers, and explicitly approved starting the unattended 1,536-token run.
 
+## Next-cycle execution
+
+- Foundation commit: `6b9d62ef97cc0e01db147e86cdf26f5d83df4f7a`.
+- ChatGPT 6 Pro returned `M0 EVIDENCE BOUNDARY ACCEPT` after 40 bundled checks and 30 independent synthetic methods.
+- Integration branch: `next/integration`.
+- Science branch: `next/science-coverage`.
+- Runtime branch: `next/runtime-alpha`.
+- Documentation branch: `next/docs-alpha`.
+- The first science slice is commit `ab256f37134ee3546ec1fbb92c53796539094725`. It uses registered public train, calibration, development, and cached-logit evidence only.
+- M1 artifact archive SHA-256: `fd5e09359b217abeeb38625faa4368af0db94419c95623e17dffd7eabcb9f45e`.
+- M1 manifest content SHA-256: `9a0d7aa94aeb45d260f62161b648e3b52144f334c903e594e17ad3f32954f2a1`.
+- M1 is under exact-commit review through the existing Aside REPL conversation.
+- Confirmed pre-review findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent and rendered-state overlap; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
+- Next actions: resolve M1 review; complete factual and licensing documentation for M2D; implement the generation-79 data-only runtime for M2R; request M3 review before any fixed-weight inference.
+- Status: active.
+
 ## Confirmed model design
 
 - ModernBERT-base backbone.
