@@ -1,6 +1,6 @@
 # Haetae research state
 
-Status: active
+Status: waiting
 
 ## Objective and completion criteria
 
@@ -618,3 +618,9 @@ The freeze binds 15,572 original requests with 23,068 questions, 2,048 native ta
 The private M4 archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-t05-paired-replay-v1-prerun.zip`, SHA-256 `44d5dd5dae94d9d6cc9928e7fdb065424810a7fa07ca17c82efe91e744d9f1b7`, size 40,471,214 bytes. It contains 88 members and 87 indexed payloads; review-index self-digest is `06a488ee9d93c55bcc64ba96e6cde05ed141702b532867baac0a60303f8d1b0b`. It contains no checkpoint tensor payload.
 
 No initialization, model forward, MPS operation, checkpoint deserialization, optimizer update, or locked-test access has occurred. Submit the exact producer commit and private archive to ChatGPT 6 Pro through Aside REPL. Only `M4 PAIRED REPLAY START` authorizes the exact sequential seed-17 pair. The current volume has about 33 GB free, below the frozen 32-checkpoint reserve of about 54 GB; execution also requires a non-destructive space recovery before initialization.
+
+## T05 pause boundary
+
+The exact M4 request was submitted in the recorded Aside conversation with archive `haetae-t05-paired-replay-v1-prerun.zip` and corrected producer commit `e06ca7362a06a0ea454df06523ac484657db317b`. At the 2026-09-21 pause boundary, ChatGPT 6 Pro had verified the archive identity and was still running CPU-only code, tape, initialization, checkpoint, evaluation, bootstrap, and seed-23-gate checks. It had not returned either terminal decision. The earlier mistyped commit identity is invalid and must not be used.
+
+Research is intentionally paused at this review boundary. Do not initialize a model, deserialize the checkpoint, run MPS work, update weights, clean scientific artifacts, or start either seed-17 arm while the status is `waiting`. On an explicit resume, first read the completed review response in full. If it returns a hold, reproduce each blocker locally and change only the reviewed defects. If it returns a start, record the decision, recover enough space from regenerable caches or other non-scientific material to satisfy the frozen reserve, create an exact detached execution worktree at the producer commit, and then follow the reviewed sequential seed-17 procedure.
