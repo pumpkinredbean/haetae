@@ -481,11 +481,23 @@ The corrected freeze is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-d
 
 The private review archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-fixed-weight-diagnostic-m3-v3.zip`, SHA-256 `36174fd0888a948d67e22a79cf3e938ec096154e69382621364a6cb9af1e5924`, size 5,507,492 bytes. Its 14 members pass CRC and per-member SHA-256 validation. It includes the frozen plan, the two pinned support Parquet files, the registered transfer development input, both cached development reports, and the evidence registry so the reviewer can reproduce exact membership without model inference. It is a private review artifact and is not tracked by Git.
 
-Do not start T04 inference until ChatGPT 6 Pro returns `M3 FIXED-WEIGHT DIAGNOSTIC START` for the exact commit, archive, manifest, and protocol identities above. After approval, record the tmux session and run only this command:
+ChatGPT 6 Pro returned `M3 FIXED-WEIGHT DIAGNOSTIC START` for the exact commit, archive, manifest, and protocol identities above. It independently verified all 14 ZIP members and 13 indexed payloads, reconstructed both support selections and all 101 removals, reproduced the 92/12/12/80 development strata and historical values, regenerated all 1,100 semantic variants, and passed 47 independent regression and adversarial checks. It loaded no real checkpoint, ran no real model forward, and opened no locked test. The approval permits one MPS process for this frozen diagnostic only.
+
+The execution uses a detached exact-review worktree so the state-only follow-up commit cannot change the reviewed code identity:
 
 ```bash
-cd /Users/minkyu/workspace/haetae-next-science
-PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m experiments.coverage_v1.run_diagnostic_v1 --plan /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-m3-v7 --paths /Users/minkyu/workspace/haetae-artifacts/paths.local.json --local-paths /Users/minkyu/workspace/haetae-artifacts/diagnostic-v1-paths.local.json --out /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1 --device mps --reviewed-manifest-sha256 ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663 --reviewed-protocol-sha256 e376a60ebbe52d7a8c0129a78c50d2ca4b3950a225089146c4d1ed6dc83b7201 --allow-reviewed-inference
+cd /Users/minkyu/workspace/haetae-diagnostic-m3-run
+test "$(git rev-parse HEAD)" = "399509c3b02ec55859c37377881dec4595006575" || exit 1
+FROZEN_PLAN=/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-m3-v7
+EVIDENCE_PATHS=/Users/minkyu/workspace/haetae-artifacts/paths.local.json
+LOCAL_PATHS=/Users/minkyu/workspace/haetae-artifacts/diagnostic-v1-paths.local.json
+NEW_OUTPUT=/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=.:src uv run --frozen python -u -m experiments.coverage_v1.run_diagnostic_v1 --plan "$FROZEN_PLAN" --paths "$EVIDENCE_PATHS" --local-paths "$LOCAL_PATHS" --registry research/evidence/index.json --out "$NEW_OUTPUT" --device mps --reviewed-manifest-sha256 ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663 --reviewed-protocol-sha256 e376a60ebbe52d7a8c0129a78c50d2ca4b3950a225089146c4d1ed6dc83b7201 --allow-reviewed-inference
 ```
 
-Next actions are to obtain the corrected M3 review with the attached archive, run the single approved MPS diagnostic if authorized, obtain measured-artifact review, then execute the separately frozen 32-request exported-runtime parity check.
+- tmux session: `haetae-fixed-weight-diagnostic-v1`
+- log: `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1.log`
+- output: `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1`
+- resume policy: the diagnostic publishes only a complete new output directory and has no partial checkpoint; if interrupted before publication, preserve the log, diagnose the exact failure, and rerun the same frozen command only after confirming no writer and no output directory exist.
+
+Next actions are to run the approved single MPS process, validate and review its measured artifact, then execute the separately frozen 32-request exported-runtime parity check.
