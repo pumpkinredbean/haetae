@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
+import contextlib
+import fcntl
+import hashlib
 import json
 import math
+import os
 import platform
 import subprocess
+import sys
+import tempfile
 import time
+import types
+import uuid
 from pathlib import Path
 
+import huggingface_hub
+import numpy
+import sentence_transformers
 import torch
+import transformers
 
 from experiments.compare_development import (
     inventory_from_requests,
@@ -35,7 +46,6 @@ from experiments.evaluate_shared import (
     fit_source_balanced_temperature,
 )
 from experiments.kev_adapter import file_sha256, load_frozen_split
-from haetae.checkpoint import atomic_json_save
 
 TRACKS = {
     "calibration": ("decision", "calibration"),
@@ -76,13 +86,22 @@ def validate_file(path: str | Path, descriptor: dict, label: str) -> Path:
     return path
 
 
+def read_validated_file(path: str | Path, descriptor: dict, label: str) -> bytes:
+    path = Path(path).resolve()
+    payload = path.read_bytes()
+    if len(payload) != descriptor["bytes"]:
+        raise ValueError(f"{label} byte size differs from the frozen protocol")
+    if hashlib.sha256(payload).hexdigest() != descriptor["sha256"]:
+        raise ValueError(f"{label} digest differs from the frozen protocol")
+    return payload
+
+
 def validate_artifact_files(root: str | Path, files: dict, label: str) -> dict:
     root = Path(root).resolve()
     validated = {}
     for relative, descriptor in sorted(files.items()):
         path = validate_file(root / relative, descriptor, f"{label} {relative}")
         validated[relative] = {
-            "path": str(path),
             "bytes": path.stat().st_size,
             "sha256": descriptor["sha256"],
         }
@@ -97,13 +116,119 @@ def validate_implementation(protocol: dict) -> None:
             raise ValueError(f"evaluation implementation changed after freeze: {relative}")
 
 
-def import_veji(source: Path):
-    spec = importlib.util.spec_from_file_location("frozen_veji_v2", source)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot import frozen VEJI source: {source}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+def import_veji(source: Path, payload: bytes):
+    module_name = f"frozen_veji_v2_{uuid.uuid4().hex}"
+    module = types.ModuleType(module_name)
+    module.__file__ = str(source)
+    module.__package__ = ""
+    sys.modules[module_name] = module
+    try:
+        code = compile(payload, str(source), "exec")
+        exec(code, module.__dict__)  # noqa: S102
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
     return module
+
+
+def expected_file_inventory(files: dict) -> dict:
+    return {
+        relative: {
+            "bytes": descriptor["bytes"],
+            "sha256": descriptor["sha256"],
+        }
+        for relative, descriptor in sorted(files.items())
+    }
+
+
+def software_identity() -> dict:
+    return {
+        "python": platform.python_version(),
+        "torch": str(torch.__version__),
+        "transformers": str(transformers.__version__),
+        "sentence_transformers": str(sentence_transformers.__version__),
+        "huggingface_hub": str(huggingface_hub.__version__),
+        "numpy": str(numpy.__version__),
+    }
+
+
+def validate_runtime(runtime: dict, protocol: dict, device: str) -> None:
+    head_parameters = protocol["model"]["reported_trainable_parameters"]
+    encoder_parameters = protocol["encoder"]["parameters"]
+    expected = {
+        "device": device,
+        "encoder_backend": "sentence-transformers",
+        "head_parameters": head_parameters,
+        "encoder_parameters": encoder_parameters,
+        "total_parameters": head_parameters + encoder_parameters,
+        "model_files": expected_file_inventory(protocol["model"]["files"]),
+        "encoder_files": expected_file_inventory(protocol["encoder"]["files"]),
+        "software": protocol["execution"]["software"],
+    }
+    if runtime != expected:
+        raise ValueError("VEJI runtime identity differs from the frozen protocol")
+
+
+def validate_prediction_numbers(predictions: list[dict], label: str) -> None:
+    if not isinstance(predictions, list):
+        raise TypeError(f"{label} predictions must be a list")
+    for prediction in predictions:
+        if not isinstance(prediction, dict):
+            raise TypeError(f"{label} predictions must contain objects")
+        logits = prediction.get("logits")
+        if not isinstance(logits, list) or any(
+            type(value) not in (int, float) or not math.isfinite(value)
+            for value in logits
+        ):
+            raise ValueError(f"{label} logits must be finite JSON numbers")
+
+
+def atomic_json_save_no_clobber(payload: dict, path: str | Path) -> None:
+    path = Path(path).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
+    )
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temporary, path)
+        os.unlink(temporary)
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
+        raise
+
+
+class EvaluationDirectoryLock:
+    def __init__(self, directory: str | Path):
+        self.path = Path(directory).resolve() / ".veji-evaluation.lock"
+        self.handle = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.handle = self.path.open("a+", encoding="utf-8")
+        try:
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            self.handle.close()
+            self.handle = None
+            raise RuntimeError(f"another VEJI evaluation holds {self.path}") from None
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.handle is not None:
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+            self.handle.close()
+            self.handle = None
 
 
 def load_veji_model(
@@ -120,8 +245,17 @@ def load_veji_model(
     encoder_files = validate_artifact_files(
         encoder_directory, protocol["encoder"]["files"], "VEJI encoder",
     )
-    module = import_veji(model_directory / "veji.py")
-    config = json.loads((model_directory / "config.json").read_text())
+    source = model_directory / "veji.py"
+    source_payload = read_validated_file(
+        source, protocol["model"]["files"]["veji.py"], "VEJI source",
+    )
+    module = import_veji(source, source_payload)
+    config_payload = read_validated_file(
+        model_directory / "config.json",
+        protocol["model"]["files"]["config.json"],
+        "VEJI configuration",
+    )
+    config = json.loads(config_payload)
     if config != protocol["model"]["config"]:
         raise ValueError("VEJI configuration differs from the frozen protocol")
     config["encoder_model"] = str(encoder_directory)
@@ -153,7 +287,9 @@ def load_veji_model(
         "total_parameters": head_parameters + encoder_parameters,
         "model_files": model_files,
         "encoder_files": encoder_files,
+        "software": software_identity(),
     }
+    validate_runtime(runtime, protocol, device)
     return model, runtime
 
 
@@ -232,6 +368,8 @@ def write_stage(
     split_sha256: str,
     runtime: dict,
 ) -> dict:
+    validate_runtime(runtime, protocol, protocol["execution"]["required_device"])
+    validate_prediction_numbers(predictions, f"VEJI {name}")
     stage = {
         "version": 1,
         "status": "complete",
@@ -243,7 +381,7 @@ def write_stage(
         "predictions": predictions,
     }
     stage["stage_sha256"] = stage_digest(stage)
-    atomic_json_save(stage, path)
+    atomic_json_save_no_clobber(stage, path)
     return stage
 
 
@@ -267,18 +405,12 @@ def load_stage(
     }
     if any(stage.get(key) != value for key, value in expected.items()):
         raise ValueError(f"{name} stage binding mismatch")
-    runtime = stage.get("runtime", {})
-    if (
-        runtime.get("device") != protocol["execution"]["required_device"]
-        or runtime.get("encoder_backend") != "sentence-transformers"
-        or runtime.get("head_parameters") != protocol["model"][
-            "reported_trainable_parameters"
-        ]
-        or runtime.get("encoder_parameters") != protocol["encoder"][
-            "parameters"
-        ]
-    ):
-        raise ValueError(f"{name} stage runtime identity mismatch")
+    validate_runtime(
+        stage.get("runtime", {}),
+        protocol,
+        protocol["execution"]["required_device"],
+    )
+    validate_prediction_numbers(stage.get("predictions"), f"VEJI {name}")
     validate_population(stage.get("predictions"), inventory, f"VEJI {name}")
     return stage
 
@@ -352,14 +484,55 @@ def analyzer_identity() -> dict:
     }
 
 
-def evaluate(args) -> dict:
+def validate_destinations(args, protocol: dict, work_directory: Path) -> None:
+    output = Path(args.out).resolve()
+    stage_paths = {
+        (work_directory / f"{name}.json").resolve()
+        for name in TRACKS
+    }
+    destinations = stage_paths | {output}
+    if len(destinations) != len(stage_paths) + 1:
+        raise ValueError("final report path aliases a reserved stage path")
+    protected = {
+        Path(args.protocol).resolve(),
+        Path(args.comparison_plan).resolve(),
+        Path(args.haetae_report).resolve(),
+        Path(args.veji_training_pool).resolve(),
+        (work_directory / ".veji-evaluation.lock").resolve(),
+    }
+    for suite in (args.decision_suite, args.transfer_suite, args.korean_suite):
+        suite = Path(suite).resolve()
+        protected.add(suite / "manifest.json")
+        protected.update(suite / f"{split}.jsonl" for split in ("calibration", "development"))
+        protected.add(suite / "rendered-state-audit.json")
+    for root, files in (
+        (Path(args.veji_model).resolve(), protocol["model"]["files"]),
+        (Path(args.veji_encoder).resolve(), protocol["encoder"]["files"]),
+    ):
+        protected.update((root / relative).resolve() for relative in files)
+    aliases = destinations & protected
+    if aliases:
+        raise ValueError(f"evaluation destination aliases a protected input: {sorted(map(str, aliases))}")
+
+
+def _evaluate_locked(args, work_directory: Path) -> dict:
     output = Path(args.out).resolve()
     if output.exists():
         raise FileExistsError(f"refusing to overwrite {output}")
-    work_directory = Path(args.work_dir).resolve()
-    work_directory.mkdir(parents=True, exist_ok=True)
     protocol = load_protocol(args.protocol)
     validate_implementation(protocol)
+    validate_destinations(args, protocol, work_directory)
+    if software_identity() != protocol["execution"]["software"]:
+        raise ValueError("analysis software differs from the frozen protocol")
+    validate_artifact_files(
+        args.veji_model, protocol["model"]["files"], "VEJI model",
+    )
+    validate_artifact_files(
+        args.veji_encoder, protocol["encoder"]["files"], "VEJI encoder",
+    )
+    required_device = protocol["execution"]["required_device"]
+    if args.device != required_device:
+        raise ValueError(f"protocol requires device {required_device}")
     comparison_plan_path = validate_file(
         args.comparison_plan,
         protocol["inputs"]["comparison_plan"]["file"],
@@ -424,9 +597,6 @@ def evaluate(args) -> dict:
             missing.append(name)
     runtime = None
     if missing:
-        required = protocol["execution"]["required_device"]
-        if args.device != required:
-            raise ValueError(f"protocol requires device {required}")
         if args.device == "mps" and not torch.backends.mps.is_available():
             raise RuntimeError("MPS is required by the frozen VEJI protocol")
         model, runtime = load_veji_model(
@@ -465,6 +635,7 @@ def evaluate(args) -> dict:
         if len(runtimes) != 1:
             raise ValueError("cached VEJI stages have different runtime identities")
         runtime = next(iter(runtimes.values()))
+    validate_runtime(runtime, protocol, required_device)
     calibration_predictions = stages["calibration"]["predictions"]
     calibration_clean, calibration_audit = training_clean_calibration_predictions(
         calibration_predictions, comparison_plan,
@@ -527,7 +698,7 @@ def evaluate(args) -> dict:
             "size_scope": "head, encoder weights, tokenizer, and required configuration",
         },
         "inference": {
-            "device": args.device,
+            "device": runtime["device"],
             "semantic_type_policy": "omitted; only the public primitive type is passed",
             "state_policy": "compile exactly once per request and reuse for its questions",
             "encoder_fallback": False,
@@ -570,8 +741,15 @@ def evaluate(args) -> dict:
         "locked_test_opened": False,
     }
     report["report_sha256"] = canonical_report_sha256(report)
-    atomic_json_save(report, output)
+    atomic_json_save_no_clobber(report, output)
     return report
+
+
+def evaluate(args) -> dict:
+    work_directory = Path(args.work_dir).resolve()
+    work_directory.mkdir(parents=True, exist_ok=True)
+    with EvaluationDirectoryLock(work_directory):
+        return _evaluate_locked(args, work_directory)
 
 
 def main() -> None:

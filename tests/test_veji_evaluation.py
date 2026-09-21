@@ -1,4 +1,6 @@
 import json
+import os
+import py_compile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,9 +8,15 @@ import torch
 
 from experiments.comparison_protocol import canonical_sha256
 from experiments.evaluate_veji import (
+    EvaluationDirectoryLock,
+    atomic_json_save_no_clobber,
+    import_veji,
     infer_requests,
     load_protocol,
     stage_digest,
+    validate_destinations,
+    validate_prediction_numbers,
+    validate_runtime,
     veji_question,
 )
 
@@ -103,3 +111,128 @@ def test_stage_digest_excludes_only_its_signature():
     assert stage_digest(stage) == digest
     stage["predictions"][0]["logits"][0] = 3.0
     assert stage_digest(stage) != digest
+
+
+def runtime_protocol():
+    return {
+        "model": {
+            "reported_trainable_parameters": 3,
+            "files": {"head": {"bytes": 4, "sha256": "a" * 64}},
+        },
+        "encoder": {
+            "parameters": 7,
+            "files": {"weights": {"bytes": 8, "sha256": "b" * 64}},
+        },
+        "execution": {
+            "software": {"python": "3.13.2"},
+        },
+    }
+
+
+def runtime_identity():
+    return {
+        "device": "mps",
+        "encoder_backend": "sentence-transformers",
+        "head_parameters": 3,
+        "encoder_parameters": 7,
+        "total_parameters": 10,
+        "model_files": {"head": {"bytes": 4, "sha256": "a" * 64}},
+        "encoder_files": {"weights": {"bytes": 8, "sha256": "b" * 64}},
+        "software": {"python": "3.13.2"},
+    }
+
+
+def test_runtime_validation_binds_files_counts_device_and_software():
+    protocol = runtime_protocol()
+    runtime = runtime_identity()
+    validate_runtime(runtime, protocol, "mps")
+    for field, value in (
+        ("model_files", {}),
+        ("total_parameters", 1),
+        ("device", "cpu"),
+        ("software", {"python": "other"}),
+    ):
+        changed = dict(runtime)
+        changed[field] = value
+        try:
+            validate_runtime(changed, protocol, "mps")
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"changed runtime field was accepted: {field}")
+
+
+def test_stage_logits_reject_booleans_and_numeric_strings():
+    validate_prediction_numbers([{"logits": [0, 0.5]}], "valid")
+    for invalid in (
+        [{"logits": [True, 0.5]}],
+        [{"logits": ["0.75", 0.5]}],
+        None,
+        ["not-an-object"],
+    ):
+        try:
+            validate_prediction_numbers(invalid, "invalid")
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"invalid predictions were accepted: {invalid}")
+
+
+def test_import_executes_verified_bytes_instead_of_stale_bytecode(tmp_path: Path):
+    source = tmp_path / "module.py"
+    source.write_text("IMPORTED_ID = 'stale-B'\n")
+    py_compile.compile(str(source), doraise=True)
+    timestamp = source.stat().st_mtime
+    source.write_text("IMPORTED_ID = 'bound-A'\n")
+    os.utime(source, (timestamp, timestamp))
+    payload = source.read_bytes()
+    assert import_veji(source, payload).IMPORTED_ID == "bound-A"
+
+
+def test_no_clobber_json_publication_preserves_complete_file(tmp_path: Path):
+    output = tmp_path / "stage.json"
+    atomic_json_save_no_clobber({"generation": 1}, output)
+    try:
+        atomic_json_save_no_clobber({"generation": 2}, output)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("complete stage was overwritten")
+    assert json.loads(output.read_text()) == {"generation": 1}
+
+
+def test_work_directory_lock_rejects_second_writer(tmp_path: Path):
+    with EvaluationDirectoryLock(tmp_path):
+        try:
+            with EvaluationDirectoryLock(tmp_path):
+                pass
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("second evaluation writer acquired the lock")
+
+
+def test_final_report_cannot_alias_a_stage(tmp_path: Path):
+    work_directory = tmp_path / "stages"
+    arguments = SimpleNamespace(
+        out=work_directory / "calibration.json",
+        protocol=tmp_path / "protocol.json",
+        comparison_plan=tmp_path / "plan.json",
+        haetae_report=tmp_path / "haetae.json",
+        veji_training_pool=tmp_path / "train.jsonl",
+        decision_suite=tmp_path / "decision",
+        transfer_suite=tmp_path / "transfer",
+        korean_suite=tmp_path / "korean",
+        veji_model=tmp_path / "model",
+        veji_encoder=tmp_path / "encoder",
+    )
+    protocol = {
+        "model": {"files": {}},
+        "encoder": {"files": {}},
+    }
+    try:
+        validate_destinations(arguments, protocol, work_directory)
+    except ValueError as error:
+        assert "stage" in str(error)
+    else:
+        raise AssertionError("final report aliased a stage")

@@ -92,7 +92,14 @@
   "execution": {
     "allow_encoder_fallback": false,
     "required_device": "mps",
-    "sentence_transformers_version": "5.2.2",
+    "software": {
+      "huggingface_hub": "1.32.0",
+      "numpy": "2.5.3",
+      "python": "3.13.2",
+      "sentence_transformers": "5.2.2",
+      "torch": "2.14.0",
+      "transformers": "5.17.0"
+    },
     "stage_order": [
       "calibration",
       "decision_development",
@@ -105,7 +112,7 @@
     "experiments/compare_development.py": "43df057fe17ca8d3f75606b223c2567c54982b273e0a857b3de4c1d262608c8f",
     "experiments/comparison_protocol.py": "907bf3f4d495aa6ff00dd04d6877b7e6641a3be9850287b524023adb5a3970e1",
     "experiments/evaluate_shared.py": "7c7771269bea1b429bdc7cd201f43a4f8404772219da09034d4a03a53d4be393",
-    "experiments/evaluate_veji.py": "258ee7077ad3ed55317197e749de4a84ae87f4f8142721726883c3f30f499db5",
+    "experiments/evaluate_veji.py": "eb0c3eed1eadb6a05b9a2982daa829a2e4ea50f1aac83c30e1d8e5978199f168",
     "experiments/kev_adapter.py": "0ae79d89909ef4af3a727de0167fa168f621e2e68d560fa98335ac015dc0baeb"
   },
   "inputs": {
@@ -199,7 +206,7 @@
     "revision": "cb8b47117db1b8e4f680616dfbb3a7565addaae5"
   },
   "objective": "Measure fixed VEJI-V2 and Haetae on identical public development memberships without opening locked tests.",
-  "protocol_sha256": "78c997f06fa8d9043e662359b421f57b5ac2f00291ceeef4512fe3696db316cb",
+  "protocol_sha256": "dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c",
   "status": "frozen",
   "training_overlap_audit": {
     "policy": "fail before inference if any exact overlap is found",
