@@ -1,6 +1,6 @@
 # T00 evidence-boundary handoff
 
-Status: ready for M0 re-review after the initial HOLD findings were resolved.
+Status: M0 accepted for foundation commit `6b9d62ef97cc0e01db147e86cdf26f5d83df4f7a`.
 
 Base commit: `4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294`.
 
@@ -27,3 +27,5 @@ The initial M0 review found unsafe output replacement, incomplete canonical-path
 The second M0 review confirmed the preceding fixes and found two remaining derivative-input gaps. The writer now verifies every registered ancestor before publication, and derivative files are captured once so size, digest, JSON structure, duplicate keys, public-content rules, and source identity are checked against the same bytes.
 
 The 40 self-tests cover the accepted path, digest and availability failures, malformed schemas and duplicate keys, lexical and symbolic-link escapes, private content, complete derivative ancestry, hash-and-parse replacement races, output no-clobber behavior, provenance cycles, and reference-worktree mutation guards. Separate CLI probes confirm that attempts to write a report over registered evidence, a reference source file, or an existing report fail without changing the destination bytes.
+
+ChatGPT 6 Pro reviewed the exact foundation commit through Aside REPL, ran all 40 self-tests and 30 independent synthetic methods, returned `M0 EVIDENCE BOUNDARY ACCEPT`, and approved it for the science, runtime, and documentation worktrees. The review did not access local evidence, locked tests, model data, inference, training, or timing workloads.

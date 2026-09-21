@@ -8,7 +8,7 @@
 - [x] Keep local paths in an untracked path map outside Git.
 - [x] Verify the historical shared training-code fingerprint.
 - [x] Pass adversarial registry self-tests and exact local evidence verification.
-- [ ] Obtain M0 review of the exact commit.
+- [x] Obtain M0 review of foundation commit `6b9d62ef97cc0e01db147e86cdf26f5d83df4f7a`.
 
 ## T01 — cached coverage audit
 
