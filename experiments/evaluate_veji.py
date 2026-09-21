@@ -152,11 +152,18 @@ def software_identity() -> dict:
     }
 
 
+def canonical_device(device: str | torch.device) -> str:
+    parsed = torch.device(device)
+    if parsed.type == "mps" and parsed.index in (None, 0):
+        return "mps"
+    return str(parsed)
+
+
 def validate_runtime(runtime: dict, protocol: dict, device: str) -> None:
     head_parameters = protocol["model"]["reported_trainable_parameters"]
     encoder_parameters = protocol["encoder"]["parameters"]
     expected = {
-        "device": device,
+        "device": canonical_device(device),
         "encoder_backend": "sentence-transformers",
         "head_parameters": head_parameters,
         "encoder_parameters": encoder_parameters,
@@ -280,7 +287,7 @@ def load_veji_model(
         parameter.numel() for parameter in model.encoder._model.parameters()
     )
     runtime = {
-        "device": str(model.device),
+        "device": canonical_device(model.device),
         "encoder_backend": model.encoder.backend,
         "head_parameters": head_parameters,
         "encoder_parameters": encoder_parameters,

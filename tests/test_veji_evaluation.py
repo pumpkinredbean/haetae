@@ -10,6 +10,7 @@ from experiments.comparison_protocol import canonical_sha256
 from experiments.evaluate_veji import (
     EvaluationDirectoryLock,
     atomic_json_save_no_clobber,
+    canonical_device,
     import_veji,
     infer_requests,
     load_protocol,
@@ -160,6 +161,11 @@ def test_runtime_validation_binds_files_counts_device_and_software():
             pass
         else:
             raise AssertionError(f"changed runtime field was accepted: {field}")
+
+
+def test_default_mps_device_has_one_canonical_identity():
+    assert canonical_device("mps") == "mps"
+    assert canonical_device("mps:0") == "mps"
 
 
 def test_stage_logits_reject_booleans_and_numeric_strings():

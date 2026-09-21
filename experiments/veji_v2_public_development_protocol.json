@@ -86,7 +86,7 @@
     },
     "id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     "license": "Apache-2.0",
-    "parameters": 117654272,
+    "parameters": 117653760,
     "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
   },
   "execution": {
@@ -112,7 +112,7 @@
     "experiments/compare_development.py": "43df057fe17ca8d3f75606b223c2567c54982b273e0a857b3de4c1d262608c8f",
     "experiments/comparison_protocol.py": "907bf3f4d495aa6ff00dd04d6877b7e6641a3be9850287b524023adb5a3970e1",
     "experiments/evaluate_shared.py": "7c7771269bea1b429bdc7cd201f43a4f8404772219da09034d4a03a53d4be393",
-    "experiments/evaluate_veji.py": "eb0c3eed1eadb6a05b9a2982daa829a2e4ea50f1aac83c30e1d8e5978199f168",
+    "experiments/evaluate_veji.py": "2a50e89967abd0109b05137725870282b5726b01671e14d582629148e397b600",
     "experiments/kev_adapter.py": "0ae79d89909ef4af3a727de0167fa168f621e2e68d560fa98335ac015dc0baeb"
   },
   "inputs": {
@@ -206,7 +206,7 @@
     "revision": "cb8b47117db1b8e4f680616dfbb3a7565addaae5"
   },
   "objective": "Measure fixed VEJI-V2 and Haetae on identical public development memberships without opening locked tests.",
-  "protocol_sha256": "dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c",
+  "protocol_sha256": "3e1028cc8095d35b5d63e2fb1622d8da6117d61028fff11fdb892edb4ae870fa",
   "status": "frozen",
   "training_overlap_audit": {
     "policy": "fail before inference if any exact overlap is found",
