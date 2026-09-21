@@ -57,6 +57,10 @@ class EvidenceError(ValueError):
     """Raised when evidence identity or provenance validation fails."""
 
 
+class EvidenceSourceError(EvidenceError):
+    """Raised when an evidence item's registered ancestor is not verified."""
+
+
 def canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -74,6 +78,59 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _assert_stable_file(
+    path: Path,
+    before: os.stat_result,
+    after: os.stat_result,
+    label: str,
+) -> None:
+    try:
+        current = path.stat()
+    except OSError as error:
+        raise EvidenceError(f"{label} changed while it was being read") from error
+    if (
+        _stat_identity(before) != _stat_identity(after)
+        or _stat_identity(after) != _stat_identity(current)
+    ):
+        raise EvidenceError(f"{label} changed while it was being read")
+
+
+def _read_bytes_snapshot(path: Path, label: str) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            data = handle.read()
+            after = os.fstat(handle.fileno())
+    except OSError as error:
+        raise EvidenceError(f"{label} is not readable") from error
+    _assert_stable_file(path, before, after, label)
+    return data
+
+
+def _sha256_file_snapshot(path: Path, label: str) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            while chunk := handle.read(8 * 1024 * 1024):
+                digest.update(chunk)
+            after = os.fstat(handle.fileno())
+    except OSError as error:
+        raise EvidenceError(f"{label} is not readable") from error
+    _assert_stable_file(path, before, after, label)
+    return before.st_size, digest.hexdigest()
+
+
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict:
     result = {}
     for key, value in pairs:
@@ -83,18 +140,20 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict:
     return result
 
 
-def _load_json(path: Path, label: str) -> dict:
+def _load_json_bytes(data: bytes, label: str) -> dict:
     try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
-        )
+        value = json.loads(data.decode("utf-8"), object_pairs_hook=_unique_object)
     except EvidenceError:
         raise
-    except (OSError, json.JSONDecodeError) as error:
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise EvidenceError(f"{label} is not readable JSON") from error
     if not isinstance(value, dict):
         raise EvidenceError(f"{label} must be a JSON object")
     return value
+
+
+def _load_json(path: Path, label: str) -> dict:
+    return _load_json_bytes(_read_bytes_snapshot(path, label), label)
 
 
 def _require_sha256(value: Any, label: str) -> str:
@@ -386,8 +445,12 @@ def _verify_reference(registry: dict, paths: dict) -> dict:
     }
 
 
-def _validate_derivative_wrapper(path: Path, evidence_id: str, entry: dict) -> None:
-    wrapper = _load_json(path, f"{evidence_id} derivative")
+def _validate_derivative_wrapper(
+    data: bytes,
+    evidence_id: str,
+    entry: dict,
+) -> None:
+    wrapper = _load_json_bytes(data, f"{evidence_id} derivative")
     _require_exact_fields(
         wrapper,
         {"schema_version", "kind", "source_evidence", "payload"},
@@ -409,6 +472,80 @@ def _validate_derivative_wrapper(path: Path, evidence_id: str, entry: dict) -> N
     _validate_public_content(wrapper, f"{evidence_id} derivative")
 
 
+def _capture_registered_artifact(
+    path: Path,
+    evidence_id: str,
+    entry: dict,
+) -> dict:
+    label = f"{evidence_id} evidence"
+    if entry["kind"] == "derivative":
+        data = _read_bytes_snapshot(path, label)
+        actual_size = len(data)
+        actual_sha256 = hashlib.sha256(data).hexdigest()
+    else:
+        actual_size, actual_sha256 = _sha256_file_snapshot(path, label)
+        data = None
+    if actual_size != entry["size_bytes"] or actual_sha256 != entry["sha256"]:
+        raise EvidenceError(f"{evidence_id} bytes differ from registry")
+    return {
+        "sha256": actual_sha256,
+        "size_bytes": actual_size,
+        "data": data,
+    }
+
+
+def _validate_captured_chain(
+    registry: dict,
+    evidence_id: str,
+    captures: dict[str, dict],
+    validated: set[str],
+) -> None:
+    if evidence_id in validated:
+        return
+    entry = registry["artifacts"][evidence_id]
+    if evidence_id not in captures:
+        raise EvidenceSourceError(f"{evidence_id} is not verified")
+    if entry["kind"] == "derivative":
+        source_id = entry["source_evidence_id"]
+        try:
+            _validate_captured_chain(registry, source_id, captures, validated)
+        except EvidenceError as error:
+            raise EvidenceSourceError(
+                f"{evidence_id} source chain is not verified: {error}"
+            ) from error
+        data = captures[evidence_id]["data"]
+        if not isinstance(data, bytes):
+            raise EvidenceError(f"{evidence_id} derivative snapshot is missing")
+        _validate_derivative_wrapper(data, evidence_id, entry)
+    validated.add(evidence_id)
+
+
+def _capture_evidence_chain(
+    registry: dict,
+    paths: dict,
+    evidence_id: str,
+    captures: dict[str, dict],
+) -> None:
+    if evidence_id in captures:
+        return
+    entry = registry["artifacts"][evidence_id]
+    if entry["kind"] == "derivative":
+        _capture_evidence_chain(
+            registry,
+            paths,
+            entry["source_evidence_id"],
+            captures,
+        )
+    artifact = resolve_explicit_artifact(paths, evidence_id)
+    if not artifact.is_file():
+        raise EvidenceSourceError(f"{evidence_id} evidence is unavailable")
+    captures[evidence_id] = _capture_registered_artifact(
+        artifact,
+        evidence_id,
+        entry,
+    )
+
+
 def verify_registry(registry: dict, paths: dict) -> dict:
     """Verify every mapped artifact and return a path-free report."""
     _validate_registry(registry)
@@ -418,7 +555,7 @@ def verify_registry(registry: dict, paths: dict) -> dict:
     ):
         raise EvidenceError("local path map schema version is unsupported")
     results_by_id = {}
-    resolved_artifacts = {}
+    captures = {}
     failures = []
     for evidence_id in sorted(registry["artifacts"]):
         entry = registry["artifacts"][evidence_id]
@@ -431,7 +568,6 @@ def verify_registry(registry: dict, paths: dict) -> dict:
                 "status": "invalid_mapping",
             }
             continue
-        resolved_artifacts[evidence_id] = artifact
         if not artifact.is_file():
             status = "missing_required" if entry["required"] else "unavailable"
             results_by_id[evidence_id] = {
@@ -441,56 +577,47 @@ def verify_registry(registry: dict, paths: dict) -> dict:
             if entry["required"]:
                 failures.append(f"{evidence_id}: required file is missing")
             continue
-        actual_size = artifact.stat().st_size
-        actual_sha256 = sha256_file(artifact)
-        if actual_size != entry["size_bytes"] or actual_sha256 != entry["sha256"]:
+        try:
+            capture = _capture_registered_artifact(artifact, evidence_id, entry)
+        except EvidenceError as error:
             results_by_id[evidence_id] = {
                 "evidence_id": evidence_id,
                 "status": "mismatch",
             }
-            failures.append(f"{evidence_id}: bytes differ from registry")
+            failures.append(f"{evidence_id}: {error}")
             continue
+        captures[evidence_id] = capture
         results_by_id[evidence_id] = {
             "evidence_id": evidence_id,
             "status": "verified",
-            "sha256": actual_sha256,
-            "size_bytes": actual_size,
+            "sha256": capture["sha256"],
+            "size_bytes": capture["size_bytes"],
             "kind": entry["kind"],
         }
-    validated_derivatives = set()
-
-    def validate_derivative(evidence_id: str) -> None:
-        if evidence_id in validated_derivatives:
-            return
+    validated_chains = set()
+    for evidence_id in sorted(registry["artifacts"]):
         entry = registry["artifacts"][evidence_id]
         if entry["kind"] != "derivative":
-            return
-        source_id = entry["source_evidence_id"]
-        if registry["artifacts"][source_id]["kind"] == "derivative":
-            validate_derivative(source_id)
+            continue
         result = results_by_id[evidence_id]
         if result["status"] != "verified":
-            validated_derivatives.add(evidence_id)
-            return
-        source_status = results_by_id[source_id]["status"]
-        if source_status != "verified":
+            continue
+        try:
+            _validate_captured_chain(
+                registry,
+                evidence_id,
+                captures,
+                validated_chains,
+            )
+        except EvidenceSourceError:
             result.clear()
             result.update({"evidence_id": evidence_id, "status": "source_unavailable"})
             if entry["required"]:
                 failures.append(f"{evidence_id}: derivative source is not verified")
-        else:
-            try:
-                _validate_derivative_wrapper(
-                    resolved_artifacts[evidence_id], evidence_id, entry
-                )
-            except EvidenceError as error:
-                result.clear()
-                result.update({"evidence_id": evidence_id, "status": "invalid_derivative"})
-                failures.append(f"{evidence_id}: {error}")
-        validated_derivatives.add(evidence_id)
-
-    for evidence_id in sorted(registry["artifacts"]):
-        validate_derivative(evidence_id)
+        except EvidenceError as error:
+            result.clear()
+            result.update({"evidence_id": evidence_id, "status": "invalid_derivative"})
+            failures.append(f"{evidence_id}: {error}")
     results = [results_by_id[evidence_id] for evidence_id in sorted(results_by_id)]
     reference = _verify_reference(registry, paths)
     report = {
@@ -523,16 +650,19 @@ def write_public_derivative(
     if source_evidence_id not in registry["artifacts"]:
         raise EvidenceError("derivative source is not registered")
     source = registry["artifacts"][source_evidence_id]
-    source_path = resolve_explicit_artifact(paths, source_evidence_id)
-    if not source_path.is_file():
-        raise EvidenceError("derivative source is unavailable")
-    if (
-        source_path.stat().st_size != source["size_bytes"]
-        or sha256_file(source_path) != source["sha256"]
-    ):
-        raise EvidenceError("derivative source bytes differ from registry")
-    if source["kind"] == "derivative":
-        _validate_derivative_wrapper(source_path, source_evidence_id, source)
+    captures = {}
+    _capture_evidence_chain(
+        registry,
+        paths,
+        source_evidence_id,
+        captures,
+    )
+    _validate_captured_chain(
+        registry,
+        source_evidence_id,
+        captures,
+        set(),
+    )
     _validate_output_destination(registry, paths, output_path)
     wrapper = {
         "schema_version": SCHEMA_VERSION,
@@ -695,6 +825,9 @@ def _self_test() -> dict:
                         "allowed",
                         "derived.json",
                         "downstream.json",
+                        "mid.json",
+                        "tip.json",
+                        "race.json",
                     ],
                 }
             },
@@ -945,6 +1078,152 @@ def _self_test() -> dict:
             "a_downstream: derivative source is not verified",
             lambda: verify_registry(derivative_registry, derivative_paths),
         )
+        must_fail(
+            "derivative writer rejects invalid ancestor",
+            lambda: write_public_derivative(
+                derivative_registry,
+                derivative_paths,
+                "a_downstream",
+                {"metric": 3.0},
+                root / "public" / "invalid-ancestor.json",
+            ),
+        )
+
+        mid_wrapper = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "public_derivative",
+            "source_evidence": {
+                "evidence_id": "fixture",
+                "sha256": entry["sha256"],
+            },
+            "payload": {"metric": 1.0},
+        }
+        mid_path = artifact_root / "mid.json"
+        mid_path.write_bytes(canonical_json_bytes(mid_wrapper) + b"\n")
+        chain_registry = copy.deepcopy(registry)
+        chain_registry["artifacts"]["mid"] = {
+            "kind": "derivative",
+            "location_key": "mid",
+            "required": True,
+            "contains_locked_data": False,
+            "sha256": sha256_file(mid_path),
+            "size_bytes": mid_path.stat().st_size,
+            "claims": ["middle fixture"],
+            "source_evidence_id": "fixture",
+            "source_sha256": entry["sha256"],
+        }
+        tip_wrapper = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "public_derivative",
+            "source_evidence": {
+                "evidence_id": "mid",
+                "sha256": chain_registry["artifacts"]["mid"]["sha256"],
+            },
+            "payload": {"metric": 2.0},
+        }
+        tip_path = artifact_root / "tip.json"
+        tip_path.write_bytes(canonical_json_bytes(tip_wrapper) + b"\n")
+        chain_registry["artifacts"]["tip"] = {
+            "kind": "derivative",
+            "location_key": "tip",
+            "required": True,
+            "contains_locked_data": False,
+            "sha256": sha256_file(tip_path),
+            "size_bytes": tip_path.stat().st_size,
+            "claims": ["tip fixture"],
+            "source_evidence_id": "mid",
+            "source_sha256": chain_registry["artifacts"]["mid"]["sha256"],
+        }
+        chain_paths = copy.deepcopy(paths)
+        chain_paths["artifacts"].update(
+            {
+                "mid": {"root": "fixture", "relative_path": "mid.json"},
+                "tip": {"root": "fixture", "relative_path": "tip.json"},
+            }
+        )
+        write_public_derivative(
+            chain_registry,
+            chain_paths,
+            "tip",
+            {"metric": 3.0},
+            root / "public" / "valid-chain.json",
+        )
+        checks.append("derivative writer validates complete chain")
+        original_bytes = artifact.read_bytes()
+        artifact.write_text('{"value":2}\n', encoding="utf-8")
+        must_fail(
+            "derivative writer rejects changed ancestor",
+            lambda: write_public_derivative(
+                chain_registry,
+                chain_paths,
+                "tip",
+                {"metric": 4.0},
+                root / "public" / "changed-ancestor.json",
+            ),
+        )
+        artifact.write_bytes(original_bytes)
+
+        race_bad_wrapper = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "public_derivative",
+            "source_evidence": {
+                "evidence_id": "unrelated",
+                "sha256": entry["sha256"],
+            },
+            "payload": {"metric": 1.0},
+        }
+        race_good_wrapper = copy.deepcopy(race_bad_wrapper)
+        race_good_wrapper["source_evidence"]["evidence_id"] = "fixture"
+        race_path = artifact_root / "race.json"
+        race_bad_bytes = canonical_json_bytes(race_bad_wrapper) + b"\n"
+        race_good_bytes = canonical_json_bytes(race_good_wrapper) + b"\n"
+        race_path.write_bytes(race_bad_bytes)
+        race_registry = copy.deepcopy(registry)
+        race_registry["artifacts"]["race"] = {
+            "kind": "derivative",
+            "location_key": "race",
+            "required": True,
+            "contains_locked_data": False,
+            "sha256": hashlib.sha256(race_bad_bytes).hexdigest(),
+            "size_bytes": len(race_bad_bytes),
+            "claims": ["race fixture"],
+            "source_evidence_id": "fixture",
+            "source_sha256": entry["sha256"],
+        }
+        race_paths = copy.deepcopy(paths)
+        race_paths["artifacts"]["race"] = {
+            "root": "fixture",
+            "relative_path": "race.json",
+        }
+        original_reader = _read_bytes_snapshot
+
+        def replace_after_read(path: Path, label: str) -> bytes:
+            data = original_reader(path, label)
+            if path == race_path:
+                replacement = artifact_root / "race-replacement.tmp"
+                replacement.write_bytes(race_good_bytes)
+                os.replace(replacement, race_path)
+            return data
+
+        globals()["_read_bytes_snapshot"] = replace_after_read
+        try:
+            must_fail(
+                "verification parses hashed derivative snapshot",
+                lambda: verify_registry(race_registry, race_paths),
+            )
+            race_path.write_bytes(race_bad_bytes)
+            must_fail(
+                "writer parses hashed derivative snapshot",
+                lambda: write_public_derivative(
+                    race_registry,
+                    race_paths,
+                    "race",
+                    {"metric": 2.0},
+                    root / "public" / "raced-source.json",
+                ),
+            )
+        finally:
+            globals()["_read_bytes_snapshot"] = original_reader
 
         cyclic = copy.deepcopy(registry)
         cyclic["artifacts"] = {
