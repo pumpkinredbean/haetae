@@ -132,6 +132,10 @@ def test_parity_rejects_inventory_substitution_and_threshold_violation():
     variants, references, observations = semantic_fixture()
     with pytest.raises(ValueError, match="inventory differs"):
         parity_result(variants, observations[:-1], references)
+    reordered = list(observations)
+    reordered[0], reordered[1] = reordered[1], reordered[0]
+    with pytest.raises(ValueError, match="order differs"):
+        parity_result(variants, reordered, references)
 
     changed = [dict(row) for row in observations]
     changed[0]["cpu_float32"] = [4.0, 1.0]

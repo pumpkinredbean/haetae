@@ -542,3 +542,23 @@ The frozen amendment is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-d
 - no real checkpoint was deserialized and no MPS model forward or locked-test access occurred while implementing, testing, or freezing the amendment.
 
 Next action: commit and push the exact amendment implementation, submit that commit plus the frozen manifest and protocol identities to ChatGPT 6 Pro for pre-run review, and execute the single semantic-only MPS process only if it returns an explicit start decision.
+
+The first exact-commit pre-run request covered commit `7ee17c3e4d4ba758055e7f457c9e434fd080bb77` and amendment freeze `fixed-weight-diagnostic-semantic-amendment-v1-m3-v1`. ChatGPT 6 Pro verified the archive hash, size, all 20 members, CRC, index, GitHub source, and controlled failure paths, but its response stopped before returning a terminal start or hold decision. This is not execution authorization, and no real-model work followed it.
+
+A local fail-closed audit then tightened the amendment before resubmission:
+
+- serialized semantic evidence must contain exactly four fields, have `status: complete`, and preserve the frozen variant order;
+- the generation-79 loader now also requires the exact run ID, specification digest, eager-attention setting, 2,048-token limit, and float32 parameter dtype;
+- the CPU verifier reconstructs the complete reuse and scientific result objects rather than checking selected fields;
+- execution receipts have an exact schema and fixed new, reused, and cumulative counters;
+- a failed final replay deletes any complete manifest before publishing the failed receipt, so a failed verification cannot leave a complete-looking result;
+- amendment, plan, held-output, and result directories reject symlink substitution;
+- nested nonfinite or malformed tensor evidence is preserved in strict JSON.
+
+All 160 repository tests and static checks still pass. The corrected freeze is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-m3-v2`:
+
+- amendment manifest SHA-256: `d8cfa217a5be39769550f11a8984fb947bd8a175f1a1ba74a056ac36e0c6ad0a`;
+- amendment protocol SHA-256: `d7992de4cc9c43ebbefe700ed6860d6d808541c98a16b67f7bad30f7ce2e5976`;
+- no checkpoint deserialization, model forward, optimizer update, or locked-test access occurred.
+
+Next action: commit and push the hardened implementation, build a new private review archive bound to the corrected identities, and obtain an explicit ChatGPT 6 Pro start decision before the one authorized MPS process.

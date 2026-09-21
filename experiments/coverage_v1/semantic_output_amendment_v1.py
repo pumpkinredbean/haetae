@@ -180,19 +180,23 @@ def _append_jsonl(handle, row: dict) -> None:
     os.fsync(handle.fileno())
 
 
-def _json_safe_values(values: torch.Tensor) -> list[float | str]:
-    encoded: list[float | str] = []
-    for value in values.tolist():
-        number = float(value)
-        if math.isnan(number):
-            encoded.append("NaN")
-        elif number == float("inf"):
-            encoded.append("+Infinity")
-        elif number == float("-inf"):
-            encoded.append("-Infinity")
-        else:
-            encoded.append(number)
-    return encoded
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, bool):
+        return value
+    number = float(value)
+    if math.isnan(number):
+        return "NaN"
+    if number == float("inf"):
+        return "+Infinity"
+    if number == float("-inf"):
+        return "-Infinity"
+    return number
+
+
+def _json_safe_values(values: torch.Tensor) -> Any:
+    return _json_safe_value(values.tolist())
 
 
 def amendment_code_identity(repository: Path) -> dict:
@@ -229,6 +233,8 @@ def _verify_files(directory: Path, descriptors: dict[str, dict], allowed) -> Non
 
 
 def validate_original_plan(plan: Path) -> dict:
+    if plan.is_symlink():
+        raise ValueError("original plan cannot be a symlink")
     root = plan.resolve(strict=True)
     expected_names = set(ORIGINAL_PLAN_FILES) | {"manifest.json"}
     if root.is_symlink() or {path.name for path in root.iterdir()} != expected_names:
@@ -289,6 +295,8 @@ def validate_original_plan(plan: Path) -> dict:
 
 
 def validate_held_output(held_output: Path, expected_feature_rows: list[dict]) -> dict:
+    if held_output.is_symlink():
+        raise ValueError("held output cannot be a symlink")
     root = held_output.resolve(strict=True)
     if root.is_symlink() or {path.name for path in root.iterdir()} != set(HELD_OUTPUT_FILES):
         raise ValueError("held output inventory differs")
@@ -658,6 +666,8 @@ def freeze(
 
 
 def read_freeze(amendment: Path) -> tuple[dict, dict]:
+    if amendment.is_symlink():
+        raise ValueError("amendment freeze cannot be a symlink")
     root = amendment.resolve(strict=True)
     if root.is_symlink() or {path.name for path in root.iterdir()} != {
         "protocol.json", "manifest.json",
@@ -742,12 +752,20 @@ def parity_result(
         raise ValueError("semantic variants contain duplicate IDs")
     observation_index = {}
     for row in observations:
+        if set(row) != {"variant_id", "status", "cpu_float32", "logits"}:
+            raise ValueError("semantic observation fields differ")
+        if row.get("status") != "complete":
+            raise ValueError("semantic observation is incomplete")
         variant_id = row.get("variant_id")
         if variant_id in observation_index:
             raise ValueError("semantic observations contain duplicate IDs")
         observation_index[variant_id] = row
     if set(observation_index) != set(variant_index):
         raise ValueError("semantic observation inventory differs")
+    if [row["variant_id"] for row in observations] != [
+        row["variant_id"] for row in variants
+    ]:
+        raise ValueError("semantic observation order differs")
     details = []
     raw_passed = True
     material_changes = 0
@@ -1068,6 +1086,62 @@ def _probe_replay(held: dict, recomputed: dict) -> dict:
     }
 
 
+def _reuse_value(inputs: dict, probe_replay: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "status": "validated_reuse",
+        "original_protocol_sha256": ORIGINAL_PROTOCOL_SHA256,
+        "held_output_manifest_sha256": HELD_OUTPUT_MANIFEST_SHA256,
+        "held_result_sha256": HELD_RESULT_SHA256,
+        "feature_rows": inputs["held"]["manifest"]["files"]["feature-rows.jsonl"],
+        "features": inputs["held"]["manifest"]["files"]["features.safetensors"],
+        "feature_tensor_contract": {
+            "keys": ["original", "shared"],
+            "shape": list(EXPECTED_FEATURE_SHAPE),
+            "dtype": "float32",
+            "finite": True,
+            "metadata": {"protocol_sha256": ORIGINAL_PROTOCOL_SHA256},
+        },
+        "probe_replay": probe_replay,
+    }
+
+
+def _result_value(
+    protocol: dict,
+    parity: dict,
+    probes: dict,
+    semantics: dict,
+    decisions: dict,
+) -> dict:
+    result = {
+        "schema_version": 2,
+        "status": "complete",
+        "amendment_id": AMENDMENT_ID,
+        "protocol_sha256": protocol["protocol_sha256"],
+        "original_plan_manifest_sha256": ORIGINAL_PLAN_MANIFEST_SHA256,
+        "held_output_manifest_sha256": HELD_OUTPUT_MANIFEST_SHA256,
+        "copy_result_sha256": COPY_RESULT_SELF_SHA256,
+        "original_parity": {
+            key: value for key, value in parity.items() if key != "details"
+        },
+        "probe_results": probes,
+        "semantic_results": semantics,
+        "diagnostic_decisions": decisions,
+        "provenance": {
+            "reused_feature_sequences": 5_440,
+            "new_semantic_sequences": EXPECTED_VARIANTS,
+            "new_model_forward_calls": MAXIMUM_FORWARD_CALLS,
+            "logical_combined_sequences": 6_540,
+            "old_plus_amendment_executed_sequences": 7_640,
+            "old_plus_amendment_model_forward_calls": 3_820,
+        },
+        "optimizer_updates": 0,
+        "locked_test_opened": False,
+    }
+    result["result_sha256"] = canonical_sha256(result)
+    return result
+
+
 def _load_shared_only(local: dict, device: torch.device, protocol: dict):
     shared_dir = Path(local["shared_run_directory"]).resolve(strict=True)
     for name, descriptor in SHARED_TOKENIZER_FILES.items():
@@ -1089,7 +1163,15 @@ def _load_shared_only(local: dict, device: torch.device, protocol: dict):
     )
     binding = protocol["inputs"]["models"]["shared_generation_79"]
     if (
-        tokenizer_fingerprint(tokenizer) != run["spec"]["tokenizer_fingerprint"]
+        run.get("run_id") != binding["run_id"]
+        or run.get("spec_sha256") != binding["spec_sha256"]
+        or manifest.get("run_id") != binding["run_id"]
+        or manifest.get("spec_sha256") != binding["spec_sha256"]
+        or experiment.get("attention_implementation") != "eager"
+        or binding.get("attention_implementation") != "eager"
+        or binding.get("maximum_length") != MAXIMUM_LENGTH
+        or tokenizer_fingerprint(tokenizer)
+        != run["spec"]["tokenizer_fingerprint"]
         or model_config_fingerprint(model) != run["spec"]["model_config_fingerprint"]
         or manifest["current"]["generation"] != GENERATION
         or manifest["current"]["sha256"] != CHECKPOINT_SHA256
@@ -1098,6 +1180,8 @@ def _load_shared_only(local: dict, device: torch.device, protocol: dict):
         raise ValueError("shared generation-79 runtime identity differs")
     model.backbone.load_state_dict(payload["backbone"], strict=True)
     model.head.load_state_dict(payload["head"], strict=True)
+    if any(parameter.dtype != torch.float32 for parameter in model.parameters()):
+        raise ValueError("shared model parameter dtype differs")
     model.eval()
     return model, tokenizer, delimiters
 
@@ -1232,50 +1316,11 @@ def run(
         ]
         semantics = semantic_results(inputs["variants"], semantic_logits)
         decisions = diagnostic_decisions(probes, semantics, inputs["protocol"])
-        reuse = {
-            "schema_version": 1,
-            "status": "validated_reuse",
-            "original_protocol_sha256": ORIGINAL_PROTOCOL_SHA256,
-            "held_output_manifest_sha256": HELD_OUTPUT_MANIFEST_SHA256,
-            "held_result_sha256": HELD_RESULT_SHA256,
-            "feature_rows": inputs["held"]["manifest"]["files"]["feature-rows.jsonl"],
-            "features": inputs["held"]["manifest"]["files"]["features.safetensors"],
-            "feature_tensor_contract": {
-                "keys": ["original", "shared"],
-                "shape": list(EXPECTED_FEATURE_SHAPE),
-                "dtype": "float32",
-                "finite": True,
-                "metadata": {"protocol_sha256": ORIGINAL_PROTOCOL_SHA256},
-            },
-            "probe_replay": probe_replay,
-        }
+        reuse = _reuse_value(inputs, probe_replay)
         _write_json(output / "reuse.json", reuse)
-        result = {
-            "schema_version": 2,
-            "status": "complete",
-            "amendment_id": AMENDMENT_ID,
-            "protocol_sha256": protocol["protocol_sha256"],
-            "original_plan_manifest_sha256": ORIGINAL_PLAN_MANIFEST_SHA256,
-            "held_output_manifest_sha256": HELD_OUTPUT_MANIFEST_SHA256,
-            "copy_result_sha256": COPY_RESULT_SELF_SHA256,
-            "original_parity": {
-                key: value for key, value in parity.items() if key != "details"
-            },
-            "probe_results": probes,
-            "semantic_results": semantics,
-            "diagnostic_decisions": decisions,
-            "provenance": {
-                "reused_feature_sequences": 5_440,
-                "new_semantic_sequences": EXPECTED_VARIANTS,
-                "new_model_forward_calls": MAXIMUM_FORWARD_CALLS,
-                "logical_combined_sequences": 6_540,
-                "old_plus_amendment_executed_sequences": 7_640,
-                "old_plus_amendment_model_forward_calls": 3_820,
-            },
-            "optimizer_updates": 0,
-            "locked_test_opened": False,
-        }
-        result["result_sha256"] = canonical_sha256(result)
+        result = _result_value(
+            protocol, parity, probes, semantics, decisions,
+        )
         _write_json(output / "result.json", result)
         receipt = {
             **_receipt(protocol, "complete", counters),
@@ -1316,6 +1361,7 @@ def run(
         )
         return output_manifest
     except BaseException as error:
+        (output / "manifest.json").unlink(missing_ok=True)
         failure_receipt = {
             **_receipt(protocol, "failed", counters, str(error)),
             "process": _runtime_process_identity(),
@@ -1343,6 +1389,8 @@ def verify_output(
         local_paths,
         registry,
     )
+    if output.is_symlink():
+        raise ValueError("amendment output cannot be a symlink")
     root = output.resolve(strict=True)
     if root.is_symlink() or {path.name for path in root.iterdir()} != set(OUTPUT_FILES):
         raise ValueError("amendment output inventory differs")
@@ -1350,6 +1398,13 @@ def verify_output(
         root / "manifest.json", "amendment output manifest", "manifest_sha256",
     )
     if (
+        set(manifest) != {
+            "schema_version", "status", "amendment_id", "protocol_sha256",
+            "files", "new_semantic_sequences", "new_model_forward_calls",
+            "feature_extraction_forwards", "original_pretrained_model_loads",
+            "optimizer_updates", "locked_test_opened", "manifest_sha256",
+        }
+        or
         manifest.get("status") != "complete"
         or manifest.get("amendment_id") != AMENDMENT_ID
         or manifest.get("protocol_sha256") != protocol["protocol_sha256"]
@@ -1383,7 +1438,7 @@ def verify_output(
     )
     replay = _probe_replay(inputs["held"]["result"]["probe_results"], probes)
     reuse = load_json_bytes((root / "reuse.json").read_bytes(), "reuse")
-    if reuse.get("probe_replay") != replay:
+    if reuse != _reuse_value(inputs, replay):
         raise ValueError("feature probe replay evidence differs")
     logits = [
         {"variant_id": row["variant_id"], "logits": row["logits"]}
@@ -1392,19 +1447,37 @@ def verify_output(
     semantics = semantic_results(inputs["variants"], logits)
     decisions = diagnostic_decisions(probes, semantics, inputs["protocol"])
     result = _load_self_digested(root / "result.json", "amendment result", "result_sha256")
-    if (
-        result.get("probe_results") != probes
-        or result.get("semantic_results") != semantics
-        or result.get("diagnostic_decisions") != decisions
-        or result.get("original_parity")
-        != {key: value for key, value in parity.items() if key != "details"}
-    ):
+    if result != _result_value(protocol, parity, probes, semantics, decisions):
         raise ValueError("amendment scientific result does not replay")
     receipt = load_json_bytes(
         (root / "execution-receipt.json").read_bytes(), "execution receipt",
     )
     if (
-        receipt.get("status") != "complete"
+        set(receipt) != {
+            "schema_version", "status", "amendment_id", "protocol_sha256",
+            "new_execution", "reused_feature_sequences",
+            "logical_combined_sequences", "old_plus_amendment_executed_sequences",
+            "old_plus_amendment_model_forward_calls", "automatic_retry",
+            "automatic_resume", "locked_test_opened", "failure", "process",
+        }
+        or set(receipt.get("new_execution", {})) != {
+            "attempted_model_forward_calls", "completed_model_forward_calls",
+            "completed_semantic_sequences", "feature_extraction_forwards",
+            "original_pretrained_model_loads", "optimizer_updates",
+            "accelerator_processes",
+        }
+        or set(receipt.get("process", {})) != {
+            "pid", "python", "platform", "argv",
+        }
+        or type(receipt.get("process", {}).get("pid")) is not int
+        or receipt.get("process", {}).get("pid", 0) <= 0
+        or not isinstance(receipt.get("process", {}).get("python"), str)
+        or not isinstance(receipt.get("process", {}).get("platform"), str)
+        or not isinstance(receipt.get("process", {}).get("argv"), list)
+        or receipt.get("schema_version") != 1
+        or receipt.get("status") != "complete"
+        or receipt.get("amendment_id") != AMENDMENT_ID
+        or receipt.get("protocol_sha256") != protocol["protocol_sha256"]
         or receipt.get("new_execution", {}).get("attempted_model_forward_calls")
         != MAXIMUM_FORWARD_CALLS
         or receipt.get("new_execution", {}).get("completed_model_forward_calls")
@@ -1414,7 +1487,15 @@ def verify_output(
         or receipt.get("new_execution", {}).get("feature_extraction_forwards") != 0
         or receipt.get("new_execution", {}).get("original_pretrained_model_loads") != 0
         or receipt.get("new_execution", {}).get("optimizer_updates") != 0
+        or receipt.get("new_execution", {}).get("accelerator_processes") != 1
+        or receipt.get("reused_feature_sequences") != 5_440
+        or receipt.get("logical_combined_sequences") != 6_540
+        or receipt.get("old_plus_amendment_executed_sequences") != 7_640
+        or receipt.get("old_plus_amendment_model_forward_calls") != 3_820
+        or receipt.get("automatic_retry") is not False
+        or receipt.get("automatic_resume") is not False
         or receipt.get("locked_test_opened") is not False
+        or receipt.get("failure") is not None
     ):
         raise ValueError("amendment execution receipt differs")
     return manifest
