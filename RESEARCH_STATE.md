@@ -4,12 +4,13 @@ Status: waiting
 
 ## VEJI-V2 public-development baseline
 
-- Status: active; ChatGPT 6 Pro approved the frozen public-development run and MPS evaluation is starting.
+- Status: active; the first checkpoint load exposed a runtime-metadata defect, which is fixed and waiting for ChatGPT 6 Pro correction review before resuming.
 - Branch: `next/veji-baseline`.
 - Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
-- Correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
+- Initial correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
+- Runtime-identity correction commit: `f2e3f2b8209ea1042831b8dc5cfd8dcf5566f482`.
 - Frozen protocol: `experiments/veji_v2_public_development_protocol.json`.
-- Protocol SHA-256: `dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c`.
+- Protocol SHA-256: `3e1028cc8095d35b5d63e2fb1622d8da6117d61028fff11fdb892edb4ae870fa`.
 - External checkpoint: `loaiabdalslam/VEJI-V2` at revision `cb8b47117db1b8e4f680616dfbb3a7565addaae5`.
 - Frozen encoder: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` at revision `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`.
 - Public training pool: `loaiabdalslam/VEJI-Synth-v2-200K` at revision `aa30047aef9c5ee501f80e8ea1def512381f123a`.
@@ -22,6 +23,8 @@ Status: waiting
 - Correction commit `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0` validates actual model and encoder files on every fresh or cached run, binds the complete software and artifact identity, executes only the exact validated source buffer, rejects non-JSON numeric logits, rejects destination aliases, holds one nonblocking evaluation-directory lock, and publishes stages and the final report without overwriting an existing file.
 - Validation after correction: 146 tests pass; focused lint and protocol, implementation, artifact, runtime, source-byte, lock, alias, and no-clobber checks pass. No checkpoint was loaded and no model inference occurred.
 - ChatGPT 6 Pro returned `VEJI PRERUN START` for exact correction commit `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0` and protocol `dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c`. It ran 10 supplied tests and 78 independent controlled cases, including actual evaluator entry-point execution, cached-stage rejection, stale-bytecode substitution, concurrent publication, interrupted evaluation, exact resume, scalar temperature fitting, raw and scaled metrics, and 2,000-draw parent bootstraps. It loaded no checkpoint, ran no model inference, used no native MPS operation, and opened no locked payload.
+- The approved run started at 2026-09-22 02:57:47 KST and stopped during runtime validation immediately after checkpoint loading. No question inference or stage publication occurred. The actual parameter device was the canonical default `mps:0`, while the protocol requested `mps`; the evaluator now records both as the same canonical MPS identity. The protocol had counted the encoder safetensors entries, including a 512-element non-parameter position-ID buffer, as parameters. The loaded encoder has 117,653,760 parameters, so the corrected total model count is 120,936,259.
+- Commit `f2e3f2b8209ea1042831b8dc5cfd8dcf5566f482` makes only those two runtime-identity corrections and freezes protocol `3e1028cc8095d35b5d63e2fb1622d8da6117d61028fff11fdb892edb4ae870fa`. The real pinned checkpoint and encoder now pass runtime validation on MPS without running a forward pass. All 147 repository tests and 11 focused tests pass.
 - Planned tmux session: `haetae-veji-v2-dev`.
 - Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
 - Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
