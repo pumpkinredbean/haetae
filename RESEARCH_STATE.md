@@ -561,4 +561,15 @@ All 160 repository tests and static checks still pass. The corrected freeze is `
 - amendment protocol SHA-256: `d7992de4cc9c43ebbefe700ed6860d6d808541c98a16b67f7bad30f7ce2e5976`;
 - no checkpoint deserialization, model forward, optimizer update, or locked-test access occurred.
 
-Next action: commit and push the hardened implementation, build a new private review archive bound to the corrected identities, and obtain an explicit ChatGPT 6 Pro start decision before the one authorized MPS process.
+ChatGPT 6 Pro returned `SEMANTIC OUTPUT AMENDMENT HOLD` for commit `d744eeccccdfcd24062ceccb50012703165530e2`. It verified the replacement archive and reproduced two remaining boundary defects without MPS, checkpoint, or locked-test access. Numerical vector validation occurred after the original-family filter, so 904 non-original variants could contain contradictory or malformed stored transfer evidence while the final verifier still accepted recomputed semantic results. The amendment freeze manifest and protocol and the completed-output manifest also bypassed the existing leaf-file symbolic-link check.
+
+Commit `75cbaac35d46a636d86cd4ba9ced9b1f4dea95da` corrects only those two defects. Every one of the 1,100 observations is now checked for the frozen candidate count, finite non-Boolean numbers, exact float32 representability, and exact equality between widened float32 values and stored float64 logits before original-family filtering. Historical-reference tolerances remain restricted to the 196 originals and are unchanged. The three boundary JSON files now pass through the existing explicit allowlist and leaf-symbolic-link check before reading or hashing. End-to-end final-verifier regressions cover contradictory and nested malformed non-original evidence; focused tests also cover non-exact float32 values and all three leaf-file substitutions. All 168 repository tests and static checks pass.
+
+The new freeze is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-m3-v3`:
+
+- amendment manifest self-digest: `27247ecd3cf2aecf5a9030cd85fd30619941adafd42421436f1320517efd7b77`;
+- amendment protocol self-digest: `f23a19e03a226d8c0ceb8c9fbdd1dc9a588ca63050c2f7e04116381157cae92c`;
+- fresh freeze replay: 1,100 variants, 2,720 feature rows, and 196 historical references;
+- no checkpoint deserialization, model forward, optimizer update, or locked-test access occurred.
+
+The private review archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-semantic-output-amendment-v1-prerun-v3.zip`, SHA-256 `e44b061f72609873e2d4fef2078299532f98cbbb8567b0a54f3a52af787b0e00`, size 10,662,136 bytes. Its 20 members pass CRC validation, and all 19 review-index payload descriptors reproduce. ChatGPT 6 Pro is reviewing this exact commit and archive. Do not run the semantic-only MPS command unless it returns the exact terminal decision `SEMANTIC OUTPUT AMENDMENT START`.
