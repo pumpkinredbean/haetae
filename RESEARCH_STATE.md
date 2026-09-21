@@ -2,6 +2,33 @@
 
 Status: waiting
 
+## VEJI-V2 public-development baseline
+
+- Status: active; checkpoint loading and inference are waiting for ChatGPT 6 Pro pre-run review.
+- Branch: `next/veji-baseline`.
+- Review candidate implementation commit: `95bb5c52e32bec5d9339958e840bd3816c80b858`.
+- Frozen protocol: `experiments/veji_v2_public_development_protocol.json`.
+- Protocol SHA-256: `78c997f06fa8d9043e662359b421f57b5ac2f00291ceeef4512fe3696db316cb`.
+- External checkpoint: `loaiabdalslam/VEJI-V2` at revision `cb8b47117db1b8e4f680616dfbb3a7565addaae5`.
+- Frozen encoder: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` at revision `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`.
+- Public training pool: `loaiabdalslam/VEJI-Synth-v2-200K` at revision `aa30047aef9c5ee501f80e8ea1def512381f123a`.
+- Exact rendered-state overlap between all 190,000 public training-pool records and the 3,624 unique public development states is zero.
+- Required runtime files total 497,967,642 bytes. The VEJI head is 13,142,985 bytes; the external encoder and its tokenizer and configuration account for the rest.
+- Evaluation uses the exact public Decision, transfer, and Korean development memberships already bound by comparison plan `dc11cd8099fd3fe202145b20f4fee241ef98223b59ea3c16d1d243a3d73edd87`.
+- The adapter passes only normalized state, instruction, options, and the public Choice, Noul, or Score primitive. It does not supply task, source, family, or semantic-type hints.
+- State is compiled once per request. Split results are written atomically and can be resumed without repeating completed inference.
+- Validation before review: 140 tests pass; focused lint and protocol, implementation, artifact, suite, and reference-report bindings pass. No checkpoint was loaded and no model inference occurred.
+- Planned tmux session: `haetae-veji-v2-dev`.
+- Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
+- Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
+- Final report: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/report.json`.
+- Exact post-review command:
+
+```bash
+cd /Users/minkyu/workspace/haetae-veji-baseline
+tmux new-session -d -s haetae-veji-v2-dev "zsh -lc 'set -o pipefail; PYTHONPATH=. HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false uv run --frozen --extra external-eval python -u -m experiments.evaluate_veji --protocol experiments/veji_v2_public_development_protocol.json --comparison-plan /Users/minkyu/workspace/haetae/evaluations/comparison-v1/plan.json --decision-suite /Users/minkyu/workspace/haetae/evaluations/shared-v1 --transfer-suite /Users/minkyu/workspace/haetae/evaluations/kev-transfer-v4 --korean-suite /Users/minkyu/workspace/haetae/evaluations/korean-v1 --haetae-report /Users/minkyu/workspace/haetae/evaluations/shared-v1-development.json --veji-model /Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/model --veji-encoder /Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/encoder --veji-training-pool /Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/dataset/train.jsonl --work-dir /Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages --out /Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/report.json --device mps 2>&1 | tee -a veji_v2_public_development.log'"
+```
+
 ## Objective and completion criteria
 
 Build and evaluate a clean-room local typed-decision model that encodes shared state once, isolates question branches inside one packed non-generative model call, supports dynamic Choice, Noul, and Score outputs, includes Korean supervision, and serves a compatible local API.
