@@ -1,0 +1,26 @@
+{
+  "state": {
+    "ticket": "The customer reports a duplicate charge after a card payment."
+  },
+  "questions": [
+    {
+      "id": "route",
+      "type": "choice",
+      "instructions": "Select the best support queue.",
+      "options": [
+        "card payment dispute",
+        "cash withdrawal",
+        "account access"
+      ]
+    },
+    {
+      "id": "needs_review",
+      "type": "noul",
+      "instructions": "Does this ticket need human review?",
+      "options": [
+        "yes",
+        "no"
+      ]
+    }
+  ]
+}
