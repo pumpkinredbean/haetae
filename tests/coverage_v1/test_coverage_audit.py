@@ -1,4 +1,5 @@
 import copy
+import math
 from pathlib import Path
 
 import pytest
@@ -335,6 +336,16 @@ def test_prediction_nll_uses_centered_log_probabilities():
         "soft": None,
     }
     assert _prediction_metrics(row, 1.0)["nll"] == pytest.approx(1000.0)
+
+
+def test_equal_large_logits_preserve_uniform_nll():
+    row = {
+        "logits": [1e16, 1e16],
+        "options": ["left", "right"],
+        "label": 1,
+        "soft": None,
+    }
+    assert _prediction_metrics(row, 1.0)["nll"] == pytest.approx(math.log(2.0))
 
 
 def test_coverage_modules_do_not_import_model_runtimes():

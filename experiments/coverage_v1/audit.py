@@ -504,10 +504,11 @@ def _prediction_metrics(row: dict, temperature: float) -> dict[str, float]:
     if not scaled_logits or not all(math.isfinite(value) for value in scaled_logits):
         raise ValueError("logits must be a nonempty finite list")
     maximum = max(scaled_logits)
-    log_normalizer = maximum + math.log(sum(
-        math.exp(value - maximum) for value in scaled_logits
+    shifted = [value - maximum for value in scaled_logits]
+    log_normalizer = math.log(math.fsum(
+        math.exp(value) for value in shifted
     ))
-    log_probabilities = [value - log_normalizer for value in scaled_logits]
+    log_probabilities = [value - log_normalizer for value in shifted]
     probabilities = [math.exp(value) for value in log_probabilities]
     target = _target(row)
     predicted = max(range(len(probabilities)), key=probabilities.__getitem__)
