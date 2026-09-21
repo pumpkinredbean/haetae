@@ -30,12 +30,15 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Science branch: `next/science-coverage`.
 - Runtime branch: `next/runtime-alpha`.
 - Documentation branch: `next/docs-alpha`.
-- The first science slice is commit `ab256f37134ee3546ec1fbb92c53796539094725`. It uses registered public train, calibration, development, and cached-logit evidence only.
-- M1 artifact archive SHA-256: `fd5e09359b217abeeb38625faa4368af0db94419c95623e17dffd7eabcb9f45e`.
-- M1 manifest content SHA-256: `9a0d7aa94aeb45d260f62161b648e3b52144f334c903e594e17ad3f32954f2a1`.
-- M1 is under exact-commit review through the existing Aside REPL conversation.
-- Confirmed pre-review findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent and rendered-state overlap; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
-- Next actions: resolve M1 review; complete factual and licensing documentation for M2D; implement the generation-79 data-only runtime for M2R; request M3 review before any fixed-weight inference.
+- The first M1 submission at commit `ab256f37134ee3546ec1fbb92c53796539094725` received `M1 CACHED COVERAGE HOLD`. The cached metrics reproduced, but the output verifier accepted an empty or escaping output inventory, Choice permutations could hide conflicting semantic labels, common-clean source-macro checks were incomplete, and cached token lengths accepted invalid types.
+- Correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` closes those findings, uses centered log probabilities for extreme NLL values, binds the normalization and path-resolution helpers, and records the remaining M3 operational-freeze requirements. Nineteen focused tests pass.
+- Corrected M1 archive SHA-256: `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`.
+- Corrected M1 manifest content SHA-256: `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
+- Corrected M1 manifest file SHA-256: `424d513891c3618002de0ca590b65ae8eff3dbff7a7f9fba674b686483c2fdf4`.
+- M1 correction re-review is pending in the existing Aside REPL conversation.
+- Regenerated findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent overlap, rendered-state overlap, and semantic label conflicts; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
+- Documentation commit `ae7ba8a854ef23d8eb046d88cc7f59f455658fcf` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved.
+- Next actions: resolve M1 correction review; obtain M2D factual and provenance review; materialize and review the T04 operational freeze before any model forward; continue the generation-79 data-only runtime without changing historical producers.
 - Status: active.
 
 ## Confirmed model design
