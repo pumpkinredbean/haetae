@@ -36,6 +36,9 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.7",
 ]
+external-eval = [
+    "sentence-transformers==5.2.2",
+]
 
 [project.scripts]
 haetae = "haetae.cli:main"

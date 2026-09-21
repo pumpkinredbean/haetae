@@ -1,0 +1,218 @@
+{
+  "adapter": {
+    "multi_question": "compile state once per request and reuse it for every question in that request",
+    "question": "instructions is passed as instruction; options preserve normalized order and text",
+    "semantic_type": "omit source, task, family, and other private semantic hints; pass only choice, noul, or score primitive",
+    "state": "experiments.kev_adapter.normalize_request rendered state string",
+    "truncation": "fail if VEJI would truncate a normalized state"
+  },
+  "calibration": {
+    "objective": "equal-task-source scalar temperature cross-entropy",
+    "population": "decision calibration after comparison-plan exclusions",
+    "report_raw_and_scaled": true
+  },
+  "comparison": {
+    "bootstrap_samples": 2000,
+    "bootstrap_seed": 9202026,
+    "bootstrap_strata": "origin source and task-source incidence",
+    "bootstrap_unit": "origin-source-namespaced request parent",
+    "directions": "VEJI minus Haetae; positive accuracy and negative losses favor VEJI",
+    "memberships": "all public development questions and frozen common-clean memberships",
+    "metrics": [
+      "accuracy",
+      "nll",
+      "brier_histogram",
+      "brier_annotation",
+      "ranked_probability_score when applicable"
+    ],
+    "reference": "Haetae shared-v1 generation 79",
+    "weightings": [
+      "question weighted",
+      "equal task source"
+    ]
+  },
+  "encoder": {
+    "files": {
+      "1_Pooling/config.json": {
+        "bytes": 190,
+        "runtime": true,
+        "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+      },
+      "config.json": {
+        "bytes": 645,
+        "runtime": true,
+        "sha256": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e"
+      },
+      "config_sentence_transformers.json": {
+        "bytes": 122,
+        "runtime": true,
+        "sha256": "b8c64b5cece00d8424b4896ea75b512b6008576088497609dfeb6bd63e6d36b8"
+      },
+      "model.safetensors": {
+        "bytes": 470641600,
+        "runtime": true,
+        "sha256": "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b"
+      },
+      "modules.json": {
+        "bytes": 229,
+        "runtime": true,
+        "sha256": "8f4b264b80206c830bebbdcae377e137925650a433b689343a63bdc9b3145460"
+      },
+      "sentence_bert_config.json": {
+        "bytes": 53,
+        "runtime": true,
+        "sha256": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f"
+      },
+      "sentencepiece.bpe.model": {
+        "bytes": 5069051,
+        "runtime": true,
+        "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
+      },
+      "special_tokens_map.json": {
+        "bytes": 239,
+        "runtime": true,
+        "sha256": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d"
+      },
+      "tokenizer.json": {
+        "bytes": 9081518,
+        "runtime": true,
+        "sha256": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8"
+      },
+      "tokenizer_config.json": {
+        "bytes": 526,
+        "runtime": true,
+        "sha256": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b"
+      }
+    },
+    "id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "license": "Apache-2.0",
+    "parameters": 117654272,
+    "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+  },
+  "execution": {
+    "allow_encoder_fallback": false,
+    "required_device": "mps",
+    "sentence_transformers_version": "5.2.2",
+    "stage_order": [
+      "calibration",
+      "decision_development",
+      "transfer_development",
+      "korean_development"
+    ],
+    "stage_persistence": "one digest-bound atomic JSON artifact per stage"
+  },
+  "implementation_files": {
+    "experiments/compare_development.py": "43df057fe17ca8d3f75606b223c2567c54982b273e0a857b3de4c1d262608c8f",
+    "experiments/comparison_protocol.py": "907bf3f4d495aa6ff00dd04d6877b7e6641a3be9850287b524023adb5a3970e1",
+    "experiments/evaluate_shared.py": "7c7771269bea1b429bdc7cd201f43a4f8404772219da09034d4a03a53d4be393",
+    "experiments/evaluate_veji.py": "258ee7077ad3ed55317197e749de4a84ae87f4f8142721726883c3f30f499db5",
+    "experiments/kev_adapter.py": "0ae79d89909ef4af3a727de0167fa168f621e2e68d560fa98335ac015dc0baeb"
+  },
+  "inputs": {
+    "comparison_plan": {
+      "file": {
+        "bytes": 12750,
+        "sha256": "dc8c5e066e15d24eb7aac0034a63663b051bd11a8fb516e9b465484e82dea947"
+      },
+      "plan_sha256": "dc11cd8099fd3fe202145b20f4fee241ef98223b59ea3c16d1d243a3d73edd87"
+    },
+    "haetae_report": {
+      "file": {
+        "bytes": 11043015,
+        "sha256": "960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23"
+      },
+      "report_sha256": "8dbe775cd09539b9d366047aa886717a9344dd2a271aa65dd030663b0f8a1d97",
+      "run": {
+        "checkpoint_sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
+        "generation": 79,
+        "run_id": "71d06d48-a3cf-4ddc-bfe2-2315dbe66da8",
+        "spec_sha256": "2797fc5a985c315f035658790c6ba582d634fe2ceeaa2d8fc5d35e78a100e9d5"
+      }
+    },
+    "populations": {
+      "calibration": {
+        "bytes": 1859074,
+        "questions": 2148,
+        "records": 1368,
+        "sha256": "2b70af1e55714878d5377bb09ececcddf6481bcaf0e26d4ce3304d348fa76476"
+      },
+      "decision_development": {
+        "bytes": 1686377,
+        "questions": 1468,
+        "records": 1204,
+        "sha256": "1af33ba7170aa4ec64ccd83b81974a5c3c61071b7e5b9b2322d4565f05e36556"
+      },
+      "korean_development": {
+        "bytes": 2380189,
+        "questions": 5000,
+        "records": 2000,
+        "sha256": "82db10f63886cd26f23eac79b0e5c5b87236d7b9eaf7102af5956fd3bdc2355b"
+      },
+      "transfer_development": {
+        "bytes": 803309,
+        "questions": 764,
+        "records": 764,
+        "sha256": "ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e"
+      }
+    }
+  },
+  "locked_test_opened": false,
+  "model": {
+    "config": {
+      "brier_weight": 0.15,
+      "chunk_chars": 768,
+      "chunk_overlap": 96,
+      "confidence_threshold": 0.55,
+      "dropout": 0.08,
+      "encoder_batch_size": 16,
+      "encoder_dim": 384,
+      "encoder_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "exact_feature_dim": 8,
+      "fallback_hash_dim": 384,
+      "hidden_dim": 384,
+      "margin_weight": 0.05,
+      "max_context_chars": 250000,
+      "max_hops": 2,
+      "normalize_embeddings": true,
+      "route_loss_weight": 0.2,
+      "top_k_chunks": 8
+    },
+    "files": {
+      "config.json": {
+        "bytes": 483,
+        "runtime": true,
+        "sha256": "989c50080a626b0c19691c1d222c5a40dd062a00ab61e881b91b6bce17b40791"
+      },
+      "veji.py": {
+        "bytes": 30001,
+        "runtime": true,
+        "sha256": "b8883ef8149315d62d1f9029082ee87a71ebceb95ea04d7f34463761c7e9b501"
+      },
+      "veji_head.pt": {
+        "bytes": 13142985,
+        "runtime": true,
+        "sha256": "f86a586e4490c361e82601b624b98bfaf2bfbac78b96791dcabeb056e24dd9d7"
+      }
+    },
+    "id": "loaiabdalslam/VEJI-V2",
+    "reported_trainable_parameters": 3282499,
+    "revision": "cb8b47117db1b8e4f680616dfbb3a7565addaae5"
+  },
+  "objective": "Measure fixed VEJI-V2 and Haetae on identical public development memberships without opening locked tests.",
+  "protocol_sha256": "78c997f06fa8d9043e662359b421f57b5ac2f00291ceeef4512fe3696db316cb",
+  "status": "frozen",
+  "training_overlap_audit": {
+    "policy": "fail before inference if any exact overlap is found",
+    "scope": "exact rendered-state equality between the full 190,000-record VEJI training pool and all public development states"
+  },
+  "training_pool": {
+    "bytes": 164856381,
+    "id": "loaiabdalslam/VEJI-Synth-v2-200K",
+    "license": "CC0-1.0",
+    "records": 190000,
+    "revision": "aa30047aef9c5ee501f80e8ea1def512381f123a",
+    "sha256": "12d9c284cb6fb34dec9ea53ba0e64f6fcac6f55b7ca3659306f0c943919ff926",
+    "split": "train"
+  },
+  "version": 1
+}
