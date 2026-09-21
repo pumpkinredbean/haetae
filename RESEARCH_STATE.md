@@ -35,10 +35,12 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Corrected M1 archive SHA-256: `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`.
 - Corrected M1 manifest content SHA-256: `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
 - Corrected M1 manifest file SHA-256: `424d513891c3618002de0ca590b65ae8eff3dbff7a7f9fba674b686483c2fdf4`.
-- M1 correction re-review is pending in the existing Aside REPL conversation.
+- ChatGPT 6 Pro returned `M1 CACHED COVERAGE ACCEPT` for correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` and the corrected archive. It verified all archive members, reran 19 repository tests and 27 independent tests, reproduced the cached metrics and six parent-bootstrap comparisons, and confirmed that no model runtime, checkpoint, inference, training, or locked payload was accessed.
+- The accepted C0 archive remains unchanged. Before the metric helper is reused for T04, equal logits with a very large common offset must retain the uniform NLL instead of losing it to absolute-logit cancellation.
 - Regenerated findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent overlap, rendered-state overlap, and semantic label conflicts; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
-- Documentation commit `ae7ba8a854ef23d8eb046d88cc7f59f455658fcf` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved.
-- Next actions: resolve M1 correction review; obtain M2D factual and provenance review; materialize and review the T04 operational freeze before any model forward; continue the generation-79 data-only runtime without changing historical producers.
+- Documentation commit `ae7ba8a26f7554b7f7b3ae297079d142de0b4735` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved.
+- ChatGPT 6 Pro returned `M2D DOCUMENTATION HOLD`. Required corrections cover the real request schema, the configured versus observed token limits, the upstream Amazon corpus terms, generation 79 versus future replacement-mixture rights, project and Kev attribution scope, metric aggregation, MPS control-order qualification, cached-audit provenance, complete verifier prerequisites, explicit test tooling, and separation of the fixed-weight diagnostic from release blockers.
+- Next actions: complete M2D correction review; materialize exact T04 support membership, exclusions, rendered variants, fitting rules, runtime identities, and the 20,000-sequence budget for M3 review before any model forward; continue the generation-79 data-only runtime without changing historical producers.
 - Status: active.
 
 ## Confirmed model design

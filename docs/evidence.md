@@ -34,9 +34,36 @@ Run the registry's adversarial self-tests without any external artifacts:
 uv run python tools/evidence_registry.py self-test
 ```
 
-To verify the actual evidence, create a local JSON object that maps every
-required `location_key` to an artifact path. Keep that file outside the
-repository. Then run:
+To verify the actual evidence, create a complete local path map outside the
+repository. Every registered evidence ID needs an `artifacts` mapping, even
+when the registry marks that artifact optional. Each relative path must stay
+inside a root's allowlist. A minimal synthetic shape is:
+
+```json
+{
+  "schema_version": 1,
+  "reference_repository": {
+    "path": "/absolute/path/to/detached-reference"
+  },
+  "roots": {
+    "evidence": {
+      "path": "/absolute/path/to/artifacts",
+      "allow_prefixes": ["runs/shared-v1", "evaluations"]
+    }
+  },
+  "artifacts": {
+    "shared_run_spec": {
+      "root": "evidence",
+      "relative_path": "runs/shared-v1/run.json"
+    }
+  }
+}
+```
+
+The example shows one entry for readability; a working map must include every
+ID in `research/evidence/index.json`. The reference checkout must be detached
+at commit `4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294`. Its registered source files
+and their parent directories must be nonwritable. Then run:
 
 ```bash
 uv run python tools/evidence_registry.py verify \
@@ -64,4 +91,3 @@ hashing.
 
 The registry is digest-bound, not cryptographically signed. Integrity depends
 on preserving the Git history, registered bytes, and local path map together.
-

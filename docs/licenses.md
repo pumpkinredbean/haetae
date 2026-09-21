@@ -43,7 +43,7 @@ source did not state a single clear redistribution license, used `unknown` or
 | Banking77 | `legacy-datasets/banking77@f54121560de48f2852f90be299010d1d6dc612ec` | CC BY 4.0 metadata | Attribution required |
 | IMDb | `stanfordnlp/imdb@e6281661ce1c48d982bc483cf8a173c1bbeb5d31` | `other` metadata | Unresolved |
 | AG News | `fancyzhx/ag_news@eb185aade064a813bc0b7f42de02595523103ca4` | `unknown` metadata | Unresolved |
-| Amazon Reviews Multi | `SetFit/amazon_reviews_multi_en@ec73b665e4be0f567b69d39425355401cfe0d29b` | Apache-2.0 metadata | Notice required |
+| Amazon Reviews Multi | `SetFit/amazon_reviews_multi_en@ec73b665e4be0f567b69d39425355401cfe0d29b` | Mirror metadata declares Apache-2.0; the upstream corpus terms limit use to academic research and prohibit republication and commercial use | Unresolved permissions conflict; notice-only clearance is insufficient |
 | DBpedia 14 | `fancyzhx/dbpedia_14@9abd46cf7fc8b4c64290f26993c540b92aa145ac` | CC BY-SA 3.0 metadata | Share-alike analysis required |
 | BoolQ | `google/boolq@35b264d03638db9f4ce671b711558bf7ff0f80d5` | CC BY-SA 3.0 metadata | Share-alike analysis required |
 | SST-5 | `SetFit/sst5@e51bdcd8cd3a30da231967c1a249ba59361279a3` | No license in the pinned dataset card | Unresolved |
@@ -57,6 +57,15 @@ Official Hugging Face metadata for the pinned revisions is available from each
 dataset's revision page. Metadata describes the publisher's declaration; this
 project does not infer extra permissions from a repository being publicly
 downloadable.
+
+For Amazon Reviews Multi, the upstream source is the
+[AWS Open Data Registry entry](https://registry.opendata.aws/amazon-reviews-ml/)
+and its linked
+[license text](https://github.com/awslabs/open-data-docs/blob/main/docs/amazon-reviews-ml/license.txt).
+The license text was retrieved on 2026-09-21 and had SHA-256
+`3aaa810a404557edba3e8b1503131aa141ff4c86ec719d92d5c15f7f23ae3171`.
+The mirror declaration and upstream terms conflict; the project does not treat
+the mirror as granting broader rights.
 
 ## Diagnostic-only sources
 
@@ -74,8 +83,8 @@ splits.
 Generation 79 remains private until all of the following are recorded in a
 reviewed release commit:
 
-1. each unresolved training source has an upstream license or a documented
-   exclusion and clean replacement;
+1. every source in generation 79's actual training history has documented
+   rights clearance or another reviewed distribution basis;
 2. attribution and share-alike obligations are mapped to the planned model
    distribution;
 3. the exported bundle includes the mmBERT-small MIT notice and all required
@@ -88,3 +97,11 @@ reviewed release commit:
 Until those conditions pass, references to generation 79 identify internal
 evidence and do not offer checkpoint bytes for redistribution.
 
+A future mixture may exclude or replace a source and produce a separately
+identified checkpoint. Such a replacement does not change generation 79's
+training history or clear generation 79 for distribution.
+
+This block is a conservative project release policy while source-specific
+permissions remain unresolved. It is not a universal conclusion that every
+dataset term becomes the license of trained model weights; that question
+requires source-specific analysis.

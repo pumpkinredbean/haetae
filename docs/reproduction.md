@@ -17,7 +17,7 @@ Locked tests are outside both workflows.
 Use the lock file and avoid dependency upgrades:
 
 ```bash
-uv sync
+uv sync --frozen
 uv run python --version
 uv run python tools/evidence_registry.py self-test
 ```
@@ -29,9 +29,10 @@ bit-for-bit. Evidence: `shared_run_spec`.
 
 ## Artifact verification
 
-Copy no artifact into the repository. Create a private path-map JSON file whose
-keys match the registry's `location_key` values. Verify the registry into a new
-output path:
+Copy no artifact into the repository. Create the complete structured path map
+shown in `docs/evidence.md`, including `schema_version`, the detached
+`reference_repository`, allowlisted `roots`, and an `artifacts` mapping for
+every registered evidence ID. Verify the registry into a new output path:
 
 ```bash
 uv run python tools/evidence_registry.py verify \
@@ -39,12 +40,19 @@ uv run python tools/evidence_registry.py verify \
   --out /path/to/new-verification-report.json
 ```
 
-The command must report all required artifacts verified and zero locked-test
-artifacts. Compare the report's registry and source identities with
+The report's `status` must be `verified`; `verified_count` counts captured
+artifacts and `unavailable_optional_count` counts valid optional mappings whose
+files or ancestors are unavailable. Every artifact in the checked-in registry
+attests `contains_locked_data: false`; the verifier validates those registered
+attestations and hashes rather than inspecting arbitrary files for examples.
+Compare `registry_sha256`, `base_commit`, and `reference.sha256` with
 `research/evidence/index.json`.
 
 ## Historical producer
 
+The historical producer checkout is exact commit
+`4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294`, with training-source identity
+`ff54ea26399fd9ad335eabba9d6f6a85a49880d8ac23b5217de665b10c2cc3fe`.
 The frozen shared suite contains 15,572 requests and 23,068 questions. The
 generation 79 training command was:
 
@@ -99,4 +107,3 @@ protocol and result through `execution_protocol`, `execution_summary`, and
 | Paired development comparison | `4d81804932a96afadd568ff4668c44c7cd993bd9ba8587ddc6042e015908b343` |
 
 These values are evidence identities, not download links.
-

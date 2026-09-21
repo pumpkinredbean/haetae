@@ -15,6 +15,10 @@ License, Version 2.0.
 Research suites were produced with the Apache-2.0 kev codebase. Dataset terms
 are independent of the kev code license and are recorded in docs/licenses.md.
 
+Portions of the research-suite generation and compatibility work derive from
+the kev project by Jared Palmer, Copyright 2026 Jared Palmer, and remain
+subject to Apache-2.0 attribution. This notice applies to that upstream work;
+Haetae-owned contributions are attributed to Haetae contributors above.
+
 Third-party dataset names and citations identify provenance only. No dataset
 is relicensed by this NOTICE or by the Haetae project license.
-

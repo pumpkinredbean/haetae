@@ -9,10 +9,13 @@ and whether the change runs model inference or optimizer updates. Read
 ## Development setup
 
 ```bash
-uv sync
-uv run pytest -q
-uv run ruff check .
+uv sync --frozen
+PYTHONPATH=. uv run --with pytest pytest -q
+uv run --with ruff ruff check .
 ```
+
+`pytest` and `ruff` are explicit ephemeral development tools in these commands;
+they are not runtime dependencies in the current historical package metadata.
 
 Run focused tests while developing. Run the full available suite before a
 pull request when the locked historical environment is installed. Tests must
@@ -47,4 +50,3 @@ publishable model.
 
 By submitting a contribution, you license it under Apache-2.0 and confirm that
 you have the right to do so.
-

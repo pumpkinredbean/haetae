@@ -39,7 +39,11 @@ temperatures. Evidence: `comparison_plan`, `baseline_development_report`,
 The warmed MPS batch-one confirmation used six fresh processes. All six
 processes showed lower packed latency on both primary multi-question
 populations. The one-question negative control did not show a material
-advantage. This result is specific to the recorded Apple M3 Pro environment.
+advantage when pooled under exact counterbalancing. It did show a strong
+immediate-repeat position effect, with order-stratum ratios 0.5568 and 1.7538.
+Both primary order strata and all six processes favored packed execution. This
+result is limited to the frozen warmed, adjacent-pair workload on the recorded
+Apple M3 Pro environment.
 Evidence: `confirmation_protocol`, `confirmation_summary`, and
 `confirmation_measured_archive`.
 
@@ -51,6 +55,12 @@ emotion or offensive-tweet tasks. On offensive tweets, shared-v1 had worse
 accuracy and NLL but better cached AUROC than the historical baseline. That
 pattern is consistent with a threshold or task-binding problem and does not
 prove one.
+
+The cached audit is exploratory evidence produced by commit
+`35ee1327b6d53a722d953f067e4df081f88ee6c7`. Its corrected archive SHA-256 is
+`ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`,
+and its manifest content SHA-256 is
+`dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
 
 The next experiment is a frozen, fixed-weight diagnostic with no optimizer
 updates. It tests native labels, cyclic and opaque label mappings, ranking,
@@ -65,7 +75,4 @@ replay is allowed only if those diagnostics justify it.
 2. Export a data-only checkpoint and prove parity with the original generation
    79 checkpoint.
 3. Add an offline portable runtime and clean-install package tests.
-4. Finish the fixed-weight diagnostic and record the scientific decision,
-   including a negative result if that is what the evidence supports.
-5. Publish only aggregate qualified evidence. Locked tests remain unopened.
-
+4. Publish only aggregate qualified evidence. Locked tests remain unopened.

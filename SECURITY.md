@@ -8,9 +8,12 @@ and documented in the changelog.
 
 ## Reporting a vulnerability
 
-Use GitHub's private vulnerability reporting feature for this repository. Do
-not include credentials, private datasets, personal data, unpublished model
-artifacts, or exploit details in a public issue.
+Use GitHub's private vulnerability reporting feature when it is enabled for
+this repository. If the feature is unavailable, open a minimal public issue
+requesting a private maintainer contact and include no vulnerability details.
+Do not include credentials, private datasets, personal data, unpublished model
+artifacts, or exploit details in a public issue. Enabling and testing the
+private channel is required before the first public release.
 
 Include the affected commit, environment, minimal reproduction, expected
 impact, and whether the report involves model files, artifact verification,
@@ -21,4 +24,3 @@ a fix is available.
 Ordinary model-quality failures, unsupported claims, and dataset-provenance
 questions belong in the corresponding issue templates unless disclosure would
 expose private data.
-

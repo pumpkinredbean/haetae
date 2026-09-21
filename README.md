@@ -22,14 +22,28 @@ the repository as the comparison baseline.
 ## Measured status
 
 All differences below are shared-v1 minus the historical baseline after each
-model's independently fitted temperature. Confidence intervals resample whole
-request parents.
+model's independently fitted temperature. This first table is common-clean and
+question-weighted. Confidence intervals resample whole request parents within
+the frozen strata.
 
 | Public development population | Questions | Accuracy difference | NLL difference | Evidence |
 | --- | ---: | ---: | ---: | --- |
 | Decision | 1,463 | +0.1722, 95% CI [0.1389, 0.2047] | -0.4562, 95% CI [-0.5203, -0.3911] | `development_comparison` |
 | Korean | 5,000 | +0.3866, 95% CI [0.3686, 0.4038] | -0.5028, 95% CI [-0.5317, -0.4738] | `development_comparison` |
 | English transfer | 764 | -0.0563, 95% CI [-0.0976, -0.0118] | +0.1302, 95% CI [0.0810, 0.1775] | `development_comparison` |
+
+The corresponding source-macro accuracy differences give every task source
+equal weight:
+
+| Public development population | Source-macro accuracy difference | Evidence |
+| --- | ---: | --- |
+| Decision | +0.0998, 95% CI [0.0686, 0.1322] | `development_comparison` |
+| Korean | +0.3881, 95% CI [0.3684, 0.4073] | `development_comparison` |
+| English transfer | -0.0228, 95% CI [-0.0570, 0.0126] | `development_comparison` |
+
+These intervals are pointwise and conditional on the fixed checkpoints,
+fitted temperatures, observed parents, and declared strata. They do not cover
+training-seed or calibration-fit uncertainty.
 
 On the frozen six-process, warmed MPS batch-one benchmark, packed execution
 used 0.7634 times the matched batched latency for decision workloads and
@@ -38,9 +52,21 @@ was 0.9881. These ratios apply only to the recorded Apple M3 Pro setup and do
 not describe cold start, transport, or peak memory. Evidence:
 `confirmation_summary`.
 
+The single-question control is pooled-neutral under exact counterbalancing but
+has a strong immediate-repeat position effect: its order-stratum ratios were
+0.5568 and 1.7538, and the first operation took 1.7748 times the second on
+average. Both primary order strata and all six processes favored packed
+execution. The accepted claim is limited to the frozen warmed, adjacent-pair
+workload on the recorded host. Evidence: `confirmation_summary`.
+
 The transfer regression is a current limitation. A cached audit also found no
 shared-v1 training supervision for the emotion and offensive-tweet tasks. The
-next frozen experiment tests whether their failures come from task/readout
+producer is commit `35ee1327b6d53a722d953f067e4df081f88ee6c7`;
+the corrected exploratory audit archive has SHA-256
+`ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`
+and manifest content SHA-256
+`dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
+The next frozen experiment tests whether the failures come from task/readout
 binding before any additional training is considered.
 
 See [the current research status](docs/research-status.md),
@@ -54,20 +80,21 @@ A request contains one state and typed questions:
 ```json
 {
   "state": "The customer says the transfer has not arrived.",
-  "nouls": [
-    {
-      "id": "urgent",
+  "questions": {
+    "urgent": {
+      "type": "noul",
       "instructions": "Does this require urgent handling?"
-    }
-  ],
-  "choices": [
-    {
-      "id": "route",
+    },
+    "route": {
+      "type": "choice",
       "instructions": "Which team should handle this?",
-      "options": ["payments", "account access", "general support"]
+      "criteria": {
+        "payments": null,
+        "account_access": null,
+        "general_support": null
+      }
     }
-  ],
-  "scores": []
+  }
 }
 ```
 
@@ -75,9 +102,10 @@ A request contains one state and typed questions:
 declared low-to-high order. Candidate text is never silently truncated: a
 request that cannot preserve every option within the input budget is rejected.
 
-The current checked-in server loads the historical baseline. Do not use it as
-an example of shared-v1 deployment. The shared-v1 portable runtime will be
-documented after export and parity review.
+This is the typed research request contract. It is not a claim that shared-v1
+is already deployed. The current checked-in server loads the historical
+baseline; the shared-v1 portable runtime will be documented after export and
+parity review.
 
 ## Repository map
 
@@ -97,7 +125,7 @@ docs/                       research, evidence, reproduction, and licenses
 The historical producer environment is locked by `uv.lock`:
 
 ```bash
-uv sync
+uv sync --frozen
 uv run python tools/evidence_registry.py self-test
 ```
 

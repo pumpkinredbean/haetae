@@ -12,7 +12,8 @@ text.
 - Backbone license metadata: MIT
 - Languages represented in supervised training: English and Korean
 - Input primitives: `choice`, `noul`, and ordinal `score`
-- Maximum trained packed length: 2,048 tokens
+- Configured packed-token limit: 2,048 tokens
+- Maximum observed training request: 1,011 tokens
 - Checkpoint SHA-256: `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`
 
 The model encodes state tokens once. Each question branch can attend to the
@@ -61,15 +62,23 @@ after independently fitting a temperature for each model.
 | Korean, 5,000 questions | +0.3866 | -0.5028 | shared-v1 better |
 | English transfer, 764 questions | -0.0563 | +0.1302 | shared-v1 worse |
 
-Evidence: `development_comparison`. Confidence intervals and source-macro
+The displayed rows are common-clean, question-weighted differences. Evidence:
+`development_comparison`. Confidence intervals and source-macro accuracy
 results are recorded in that artifact and summarized in the repository
-README.
+README. Intervals are pointwise and conditional on the fixed checkpoints,
+fitted temperatures, observed parents, and declared strata.
 
 The warmed six-process MPS batch-one confirmation measured packed-to-batched
 latency ratios of 0.7634 on decision workloads and 0.8364 on Korean workloads.
 The one-question negative control ratio was 0.9881. These are host- and
 protocol-specific results. Evidence: `confirmation_protocol` and
 `confirmation_summary`.
+
+The control is pooled-neutral under exact counterbalancing, but its
+immediate-repeat order-stratum ratios were 0.5568 and 1.7538. Both primary
+order strata and all six processes favored packed execution. The accepted
+claim covers only the frozen warmed, adjacent-pair workload on the recorded
+Apple M3 Pro host.
 
 ## Probability interpretation
 
@@ -88,7 +97,11 @@ not replace probability calibration.
 
 - Aggregate English transfer results are worse than the historical baseline.
 - The emotion and offensive-tweet development tasks had no matching shared-v1
-  training supervision in the cached coverage audit.
+  training supervision in the cached coverage audit. The exploratory audit is
+  bound to producer commit `35ee1327b6d53a722d953f067e4df081f88ee6c7`,
+  archive SHA-256 `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`,
+  and manifest content SHA-256
+  `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
 - Option wording, order, and label semantics can change predictions.
 - Long requests are rejected if all candidates cannot be preserved; they are
   not silently truncated.
@@ -105,4 +118,3 @@ code is Apache-2.0. Those licenses do not determine the terms of third-party
 training datasets. Generation 79 weights are not distributed with the current
 research alpha because several source licenses or redistribution terms remain
 unresolved. See `docs/licenses.md` before publishing any bundle.
-
