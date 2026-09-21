@@ -143,6 +143,26 @@ def test_parity_rejects_inventory_substitution_and_threshold_violation():
     assert parity_result(variants, changed, references)["passed"] is False
 
 
+@pytest.mark.parametrize(
+    ("cpu_float32", "logits"),
+    [
+        ([3.0, 1.0], [100.0, -100.0]),
+        ([["NaN"], 1.0], [3.0, 1.0]),
+        ([0.1, 1.0], [float(torch.tensor(0.1, dtype=torch.float32)), 1.0]),
+    ],
+)
+def test_parity_rejects_invalid_non_original_numerical_evidence(
+    cpu_float32,
+    logits,
+):
+    variants, references, observations = semantic_fixture()
+    row = observations[amendment.EXPECTED_ORIGINALS]
+    row["cpu_float32"] = cpu_float32
+    row["logits"] = logits
+    with pytest.raises(ValueError):
+        parity_result(variants, observations, references)
+
+
 def test_parity_reports_near_tie_action_change_without_dropping_it():
     variants, references, observations = semantic_fixture(reference=(0.0, 0.0))
     small_float32 = 2 ** -17
@@ -298,5 +318,128 @@ def test_freeze_refuses_an_existing_output_before_reading_inputs(tmp_path):
             tmp_path / "missing-paths",
             tmp_path / "missing-local",
             tmp_path / "missing-registry",
+            output,
+        )
+
+
+def _self_digested(value, field):
+    result = dict(value)
+    result[field] = amendment.canonical_sha256(result)
+    return result
+
+
+@pytest.mark.parametrize(
+    ("leaf", "digest_field"),
+    [
+        ("manifest.json", "manifest_sha256"),
+        ("protocol.json", "protocol_sha256"),
+    ],
+)
+def test_read_freeze_rejects_leaf_symlinks(tmp_path, leaf, digest_field):
+    root = tmp_path / "freeze"
+    root.mkdir()
+    values = {
+        "manifest.json": _self_digested({}, "manifest_sha256"),
+        "protocol.json": _self_digested({}, "protocol_sha256"),
+    }
+    other = ({"manifest.json", "protocol.json"} - {leaf}).pop()
+    amendment._write_json(root / other, values[other])
+    target = tmp_path / f"outside-{leaf}"
+    amendment._write_json(target, values[leaf])
+    (root / leaf).symlink_to(target)
+
+    with pytest.raises(ValueError, match="cannot be a symlink"):
+        amendment.read_freeze(root)
+
+
+def _write_complete_output_boundary(root, observations):
+    root.mkdir()
+    amendment._write_jsonl(root / "semantic-logits.jsonl", observations)
+    for name in amendment.OUTPUT_FILES - {"manifest.json", "semantic-logits.jsonl"}:
+        amendment._write_json(root / name, {})
+    files = {
+        name: (
+            amendment._descriptor_with_rows(root / name)
+            if name.endswith(".jsonl")
+            else amendment._descriptor(root / name)
+        )
+        for name in sorted(amendment.OUTPUT_FILES - {"manifest.json"})
+    }
+    manifest = {
+        "schema_version": 1,
+        "status": "complete",
+        "amendment_id": amendment.AMENDMENT_ID,
+        "protocol_sha256": "p",
+        "files": files,
+        "new_semantic_sequences": amendment.EXPECTED_VARIANTS,
+        "new_model_forward_calls": amendment.MAXIMUM_FORWARD_CALLS,
+        "feature_extraction_forwards": 0,
+        "original_pretrained_model_loads": 0,
+        "optimizer_updates": 0,
+        "locked_test_opened": False,
+    }
+    amendment._write_json(
+        root / "manifest.json",
+        _self_digested(manifest, "manifest_sha256"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("cpu_float32", "logits"),
+    [
+        ([3.0, 1.0], [100.0, -100.0]),
+        ([["NaN"], 1.0], [3.0, 1.0]),
+    ],
+)
+def test_final_verifier_rejects_invalid_non_original_numerical_evidence(
+    monkeypatch,
+    tmp_path,
+    cpu_float32,
+    logits,
+):
+    variants, references, observations = semantic_fixture()
+    row = observations[amendment.EXPECTED_ORIGINALS]
+    row["cpu_float32"] = cpu_float32
+    row["logits"] = logits
+    output = tmp_path / "output"
+    _write_complete_output_boundary(output, observations)
+    monkeypatch.setattr(
+        amendment,
+        "verify_freeze",
+        lambda *args, **kwargs: (
+            {},
+            {"protocol_sha256": "p"},
+            {"variants": variants, "references": references},
+        ),
+    )
+
+    with pytest.raises(ValueError):
+        amendment.verify_output(
+            *(tmp_path / name for name in (
+                "amendment", "plan", "held", "copy", "paths", "local", "registry",
+            )),
+            output,
+        )
+
+
+def test_final_verifier_rejects_manifest_leaf_symlink(monkeypatch, tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    for name in amendment.OUTPUT_FILES - {"manifest.json"}:
+        (output / name).write_text("{}\n")
+    target = tmp_path / "outside-manifest.json"
+    target.write_text("{}\n")
+    (output / "manifest.json").symlink_to(target)
+    monkeypatch.setattr(
+        amendment,
+        "verify_freeze",
+        lambda *args, **kwargs: ({}, {"protocol_sha256": "p"}, {}),
+    )
+
+    with pytest.raises(ValueError, match="cannot be a symlink"):
+        amendment.verify_output(
+            *(tmp_path / name for name in (
+                "amendment", "plan", "held", "copy", "paths", "local", "registry",
+            )),
             output,
         )

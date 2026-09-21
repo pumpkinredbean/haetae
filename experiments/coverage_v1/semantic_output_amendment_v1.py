@@ -673,18 +673,21 @@ def read_freeze(amendment: Path) -> tuple[dict, dict]:
         "protocol.json", "manifest.json",
     }:
         raise ValueError("amendment freeze inventory differs")
+    allowed = {"protocol.json", "manifest.json"}
+    manifest_path = _safe_file(root, "manifest.json", allowed)
+    protocol_path = _safe_file(root, "protocol.json", allowed)
     manifest = _load_self_digested(
-        root / "manifest.json", "amendment manifest", "manifest_sha256",
+        manifest_path, "amendment manifest", "manifest_sha256",
     )
     protocol = _load_self_digested(
-        root / "protocol.json", "amendment protocol", "protocol_sha256",
+        protocol_path, "amendment protocol", "protocol_sha256",
     )
     if (
         manifest.get("status") != "frozen_before_inference"
         or manifest.get("amendment_id") != AMENDMENT_ID
         or manifest.get("protocol_sha256") != protocol.get("protocol_sha256")
         or manifest.get("files") != {
-            "protocol.json": _descriptor(root / "protocol.json")
+            "protocol.json": _descriptor(protocol_path)
         }
         or protocol.get("status") != "frozen_before_inference"
         or protocol.get("amendment_id") != AMENDMENT_ID
@@ -775,8 +778,6 @@ def parity_result(
         str(value): [] for value in (1.0, SHARED_TEMPERATURE)
     }
     for variant in variants:
-        if variant["family"] != "original":
-            continue
         observation = observation_index[variant["variant_id"]]
         expected_count = len(variant["question"]["options"])
         cpu32 = _validate_number_vector(
@@ -786,8 +787,12 @@ def parity_result(
             observation.get("logits"), expected_count, "stored float64 logits",
         )
         widened = cpu32.astype(np.float32).astype(np.float64)
+        if not np.array_equal(cpu32, widened):
+            raise ValueError("stored CPU float32 values are not exactly representable")
         if not np.array_equal(widened, logits):
             raise ValueError("stored float32 and float64 logits do not widen exactly")
+        if variant["family"] != "original":
+            continue
         reference = np.asarray(
             references[variant["variant_id"]]["reference_logits"],
             dtype=np.float64,
@@ -1395,7 +1400,9 @@ def verify_output(
     if root.is_symlink() or {path.name for path in root.iterdir()} != set(OUTPUT_FILES):
         raise ValueError("amendment output inventory differs")
     manifest = _load_self_digested(
-        root / "manifest.json", "amendment output manifest", "manifest_sha256",
+        _safe_file(root, "manifest.json", OUTPUT_FILES),
+        "amendment output manifest",
+        "manifest_sha256",
     )
     if (
         set(manifest) != {
