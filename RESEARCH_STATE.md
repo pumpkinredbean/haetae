@@ -468,3 +468,24 @@ The result does not establish cold-start, transport, concurrent-serving, isolate
 Next research decision:
 
 Freeze a public-development coverage experiment focused on the large emotion and offensive-tweet transfer losses before changing the architecture or starting another training run. The experiment should distinguish task and label coverage from probability calibration and representation error, bind its comparisons before calculating new outputs, and receive ChatGPT 6 Pro pre-run review. Preserve the qualified execution and Laya calibration artifacts unchanged, and do not open either locked test.
+
+## Coverage audit and fixed-weight transfer diagnostic
+
+The derivative-evidence audit is complete through M1. ChatGPT 6 Pro accepted the corrected archive bound to commit `35ee1327b6d53a722d953f067e4df081f88ee6c7`; commit `3c3503d` subsequently stabilized diagnostic NLL for equal logits with very large common offsets. The accepted audit found no emotion or offensive supervision in shared-v1 and no cross-role state or parent overlap.
+
+The first T04 pre-inference review of commit `efdcf8a7f767a665490603b9ba766e1d653b57ff` returned `M3 FIXED-WEIGHT DIAGNOSTIC HOLD`. It reproduced four blockers without loading a checkpoint or running a real model: a 92-question native emotion probe was compared with a 116-question historical baseline; a self-consistent plan could contradict support exclusions or declared fitting settings; semantic macro-F1 used candidate positions rather than a shared label ontology; and the runner split valid JSONL containing a literal Unicode line separator.
+
+Commit `399509c3b02ec55859c37377881dec4595006575` fixes those blockers. The freezer now binds the exact native populations and cached report identities, including keyed membership digests. Verification reconstructs support selection from both pinned Parquet files and reconstructs development membership from the registered public evidence. It requires exact exclusion, split, fitting, compute, model, and evidence contracts. The runner requires the externally reviewed manifest and protocol identities before model lookup, uses the duplicate-key-rejecting byte JSONL reader, and omits semantic macro-F1 while retaining fixed-ontology probe macro-F1. Thirty-three coverage tests and all 146 repository tests pass.
+
+The corrected freeze is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-m3-v7`. A second independent freeze at `fixed-weight-diagnostic-v1-m3-v8` is byte-identical. The plan manifest SHA-256 is `ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663`; the protocol SHA-256 is `e376a60ebbe52d7a8c0129a78c50d2ca4b3950a225089146c4d1ed6dc83b7201`. It contains 2,048 support-fit rows, 512 support-calibration rows, 196 development questions, 1,100 semantic variants, 6,540 encoded sequences, and 3,270 planned microbatch-two forward calls. No model forward, optimizer update, or locked-test access has occurred under this protocol.
+
+The private review archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-fixed-weight-diagnostic-m3-v3.zip`, SHA-256 `36174fd0888a948d67e22a79cf3e938ec096154e69382621364a6cb9af1e5924`, size 5,507,492 bytes. Its 14 members pass CRC and per-member SHA-256 validation. It includes the frozen plan, the two pinned support Parquet files, the registered transfer development input, both cached development reports, and the evidence registry so the reviewer can reproduce exact membership without model inference. It is a private review artifact and is not tracked by Git.
+
+Do not start T04 inference until ChatGPT 6 Pro returns `M3 FIXED-WEIGHT DIAGNOSTIC START` for the exact commit, archive, manifest, and protocol identities above. After approval, record the tmux session and run only this command:
+
+```bash
+cd /Users/minkyu/workspace/haetae-next-science
+PYTORCH_MPS_LOW_WATERMARK_RATIO=0.9 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.3 HF_HUB_OFFLINE=1 uv run python -u -m experiments.coverage_v1.run_diagnostic_v1 --plan /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-m3-v7 --paths /Users/minkyu/workspace/haetae-artifacts/paths.local.json --local-paths /Users/minkyu/workspace/haetae-artifacts/diagnostic-v1-paths.local.json --out /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1 --device mps --reviewed-manifest-sha256 ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663 --reviewed-protocol-sha256 e376a60ebbe52d7a8c0129a78c50d2ca4b3950a225089146c4d1ed6dc83b7201 --allow-reviewed-inference
+```
+
+Next actions are to obtain the corrected M3 review with the attached archive, run the single approved MPS diagnostic if authorized, obtain measured-artifact review, then execute the separately frozen 32-request exported-runtime parity check.
