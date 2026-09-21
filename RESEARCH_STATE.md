@@ -4,7 +4,7 @@ Status: waiting
 
 ## VEJI-V2 public-development baseline
 
-- Status: active; checkpoint loading and inference are waiting for ChatGPT 6 Pro correction re-review.
+- Status: active; ChatGPT 6 Pro approved the frozen public-development run and MPS evaluation is starting.
 - Branch: `next/veji-baseline`.
 - Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
 - Correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
@@ -21,6 +21,7 @@ Status: waiting
 - ChatGPT 6 Pro returned `VEJI PRERUN HOLD` for the initial commit. It found that cached stages did not fully bind the runtime and actual artifact files, timestamp-valid bytecode could bypass the checked source bytes, and the final report could overwrite a stage path. It also found that Boolean and string logits could pass the reused numeric validator.
 - Correction commit `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0` validates actual model and encoder files on every fresh or cached run, binds the complete software and artifact identity, executes only the exact validated source buffer, rejects non-JSON numeric logits, rejects destination aliases, holds one nonblocking evaluation-directory lock, and publishes stages and the final report without overwriting an existing file.
 - Validation after correction: 146 tests pass; focused lint and protocol, implementation, artifact, runtime, source-byte, lock, alias, and no-clobber checks pass. No checkpoint was loaded and no model inference occurred.
+- ChatGPT 6 Pro returned `VEJI PRERUN START` for exact correction commit `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0` and protocol `dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c`. It ran 10 supplied tests and 78 independent controlled cases, including actual evaluator entry-point execution, cached-stage rejection, stale-bytecode substitution, concurrent publication, interrupted evaluation, exact resume, scalar temperature fitting, raw and scaled metrics, and 2,000-draw parent bootstraps. It loaded no checkpoint, ran no model inference, used no native MPS operation, and opened no locked payload.
 - Planned tmux session: `haetae-veji-v2-dev`.
 - Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
 - Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
