@@ -4,7 +4,7 @@ Status: waiting
 
 ## VEJI-V2 public-development baseline
 
-- Status: active; ChatGPT 6 Pro approved the runtime-identity correction and the MPS public-development evaluation is resuming.
+- Status: active; the MPS public-development evaluation and exact local replay are complete, and measured-artifact review by ChatGPT 6 Pro is pending.
 - Branch: `next/veji-baseline`.
 - Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
 - Initial correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
@@ -26,6 +26,14 @@ Status: waiting
 - The approved run started at 2026-09-22 02:57:47 KST and stopped during runtime validation immediately after checkpoint loading. No question inference or stage publication occurred. The actual parameter device was the canonical default `mps:0`, while the protocol requested `mps`; the evaluator now records both as the same canonical MPS identity. The protocol had counted the encoder safetensors entries, including a 512-element non-parameter position-ID buffer, as parameters. The loaded encoder has 117,653,760 parameters, so the corrected total model count is 120,936,259.
 - Commit `f2e3f2b8209ea1042831b8dc5cfd8dcf5566f482` makes only those two runtime-identity corrections and freezes protocol `3e1028cc8095d35b5d63e2fb1622d8da6117d61028fff11fdb892edb4ae870fa`. The real pinned checkpoint and encoder now pass runtime validation on MPS without running a forward pass. All 147 repository tests and 11 focused tests pass.
 - ChatGPT 6 Pro returned `VEJI PRERUN START` for exact commit `f2e3f2b8209ea1042831b8dc5cfd8dcf5566f482` and the new protocol. It ran 11 supplied tests and 53 independent controlled cases. It verified that only `mps` and `mps:0` share the canonical identity, while other indices and devices still reject; independently derived the 117,653,760 encoder parameter count from the pinned BERT configuration; confirmed the corrected 120,936,259 total; and confirmed that software, backend, artifact, parameter, runtime-schema, and old-protocol stage mismatches still fail closed. It loaded no checkpoint, ran no inference, and opened no locked payload.
+- The corrected run completed all 9,380 public-development questions on MPS and published all four bound stages plus the final report. The fitted scalar temperature is `7.095015493718103`.
+- VEJI raw source-macro accuracy is `0.40125` on Decision, `0.39489` on transfer, and `0.49063` on Korean. VEJI minus Haetae source-macro accuracy is `-0.19794`, `-0.09203`, and `-0.31813`, respectively.
+- Question-weighted VEJI-minus-Haetae accuracy is `-0.35065` on Decision with parent-bootstrap interval `[-0.38430, -0.31447]`, `-0.07723` on transfer with interval `[-0.12665, -0.02517]`, and `-0.33020` on Korean with interval `[-0.34660, -0.31360]`.
+- Calibration reduces VEJI NLL and Brier values but leaves accuracy unchanged. Scaled VEJI NLL and Brier remain worse than Haetae on all three named populations.
+- The measured runtime has 120,936,259 parameters and requires 497,967,642 bytes of bound model, encoder, tokenizer, and configuration files. The 13,142,985-byte head is not a standalone runtime.
+- Final report self SHA-256 is `a3d3f54cca7593e19c249423ee219b5ee85807abe6a71438091157c0bc7d06c7`; file SHA-256 is `2e16ce352f806f2e24e1007e3292c183698b30ab4e95c72783946cdd0b0e09c9`. A complete cached replay reproduced the report byte for byte, and independent local validation accepted every stage, input, runtime, metric, bootstrap, and report binding.
+- Measured review archive: `/Users/minkyu/workspace/haetae-veji-v2-public-development-measured-v1.zip`, SHA-256 `8c3727f07895a8a0238b0dde54eab62f507cf2dc876f7e2ca9fae38c474d5028`, manifest SHA-256 `42f1b3e3a8e806f20e2d6ef3c2f53694e5e99967938fea8955d89815db96663e`.
+- No locked test was opened. The original failed-attempt log is preserved before the successful run in `veji_v2_public_development.log`.
 - Planned tmux session: `haetae-veji-v2-dev`.
 - Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
 - Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
