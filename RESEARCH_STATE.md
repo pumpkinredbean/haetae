@@ -5,7 +5,7 @@ Status: waiting
 ## VEJI-V2 public-development baseline
 
 - Status: complete; the MPS public-development evaluation, exact local replay, and measured-artifact review by ChatGPT 6 Pro are qualified.
-- Branch: `next/veji-baseline`.
+- Integration: merged into `main` at commit `46ba925b02b1bd5bdebad32717f932f87cc094c5`; the temporary local and remote `next/veji-baseline` branches and worktree were deleted.
 - Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
 - Initial correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
 - Runtime-identity correction commit: `f2e3f2b8209ea1042831b8dc5cfd8dcf5566f482`.
@@ -40,11 +40,11 @@ Status: waiting
 - The result is limited to the fixed checkpoint, standardized adapter, and named public-development populations. The review did not independently rescan the 190,000-record training pool, reopen the external model and encoder bytes, audit the self-reported 522-question synthetic result, or estimate training-seed and calibration-fit uncertainty.
 - Research decision: close this baseline and retain it as a pinned external comparison. Do not use VEJI as a replacement or teacher, do not rerun inference, and do not describe its head-only size as a complete runtime footprint.
 - No locked test was opened. The original failed-attempt log is preserved before the successful run in `veji_v2_public_development.log`.
-- Planned tmux session: `haetae-veji-v2-dev`.
-- Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
+- Completed tmux session: `haetae-veji-v2-dev`.
+- Preserved execution log: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/veji_v2_public_development.log`.
 - Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
 - Final report: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/report.json`.
-- Exact post-review command:
+- Exact completed-run command:
 
 ```bash
 cd /Users/minkyu/workspace/haetae-veji-baseline
