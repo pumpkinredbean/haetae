@@ -1,0 +1,4245 @@
+{
+  "artifact_contracts": {
+    "common_rules": {
+      "file_digest": "SHA256 of exact file bytes, with exact byte size. Keep file and content/self-digest identities separate.",
+      "incomplete": "Publish the complete manifest last, after validation. On failed final verification remove the complete marker, preserve observations and publish a failed receipt. Readers require exact payload inventory.",
+      "json": "UTF-8 strict JSON. Reject duplicate keys, numeric NaN/Infinity, unknown fields and Boolean values masquerading as integers. Split JSONL as bytes on newline so Unicode separators inside strings survive.",
+      "paths": "Resolve artifact IDs through explicit roots. Reject traversal and symlinks; hash and parse the same captured bytes. Do not use broad globbing to discover evidence.",
+      "publication": "Create outputs exclusively. Sync temporary files, publish without clobbering and sync their directory. Only mutable pointers owned by the new run may use atomic replacement.",
+      "self_digest": "SHA256 of canonical JSON with only the object's own self-digest field omitted. ensure_ascii=False, sort_keys=True, separators=(comma,colon), allow_nan=False.",
+      "self_hash_fields": {
+        "initialization": "initialization_sha256",
+        "manifest": "manifest_sha256",
+        "pair_initialization": "pair_initialization_sha256",
+        "pair_result": "result_sha256",
+        "pilot_gate": "gate_sha256",
+        "prediction_report": "report_sha256",
+        "protocol": "protocol_sha256",
+        "receipt": "receipt_sha256",
+        "review_index": "index_sha256",
+        "specification": "spec_sha256",
+        "tape_row": "row_sha256"
+      }
+    },
+    "descriptor_json_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "archive_member": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "questions": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        },
+        "rows": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        },
+        "schema_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "self_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sha256",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "freeze_status": "frozen_pre_m4; do not invent runtime tensor fingerprints before real initialization is authorized.",
+    "frozen_manifest_files": [
+      "protocol.json",
+      "input-bindings.json",
+      "original-pool.jsonl",
+      "target-pool.jsonl",
+      "target-rendering.json",
+      "exclusion-audit.json",
+      "evaluation-inventory.jsonl",
+      "evaluation-schedule.jsonl",
+      "zero-reference.jsonl",
+      "zero-reference-metrics.json",
+      "tape-s17-control.jsonl",
+      "tape-s17-targeted.jsonl",
+      "tape-s23-control.jsonl",
+      "tape-s23-targeted.jsonl",
+      "tape-alignment.json",
+      "exposure.json",
+      "lr-table.json",
+      "bootstrap-strata.json",
+      "bootstrap-seeds.json",
+      "encoding-budget.json",
+      "historical-source-digests.json"
+    ],
+    "gate_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "producer_code",
+      "arm_checkpoints",
+      "arm_reports",
+      "result_descriptor",
+      "requirements",
+      "all_requirements_passed",
+      "seed23_eligible",
+      "gate_sha256"
+    ],
+    "initial_pair_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "arms",
+      "all_tensors_equal",
+      "all_resets_valid",
+      "all_parity_passed",
+      "pair_initialization_sha256"
+    ],
+    "initialization_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "arm",
+      "run_id",
+      "source_checkpoint",
+      "step_zero_checkpoint",
+      "tensor_state_identity",
+      "optimizer_signature",
+      "reset_state",
+      "rng_identity",
+      "parity_report",
+      "runtime",
+      "code",
+      "initialization_sha256"
+    ],
+    "manifest_required_fields": [
+      "schema_version",
+      "experiment_id",
+      "status",
+      "protocol_sha256",
+      "files",
+      "code",
+      "runtime",
+      "population_counts",
+      "tape_counts",
+      "pre_m4_counters",
+      "manifest_sha256"
+    ],
+    "normal_question_required_fields": [
+      "id",
+      "type",
+      "instructions",
+      "options",
+      "option_keys",
+      "label",
+      "soft",
+      "source"
+    ],
+    "normal_request_required_fields": [
+      "request_uid",
+      "origin_source",
+      "parent_id",
+      "request_id",
+      "state",
+      "state_sha256",
+      "questions",
+      "original_record_sha256",
+      "request_sha256"
+    ],
+    "pair_result_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "zero_reference",
+      "arm_reports",
+      "paired_memberships",
+      "point_metrics",
+      "contrasts",
+      "bootstrap",
+      "gate",
+      "limitations",
+      "result_sha256"
+    ],
+    "prediction_key": "(track,request_id,question_id,family), with family=original for primary rows. Observation files need state hashes, not repeated raw state text.",
+    "prediction_report_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "arm",
+      "run_id",
+      "checkpoint",
+      "evaluation_inventory",
+      "observations",
+      "metrics",
+      "temperature_contract",
+      "counters",
+      "runtime",
+      "code",
+      "report_sha256"
+    ],
+    "prediction_row_required_fields": [
+      "schema_version",
+      "key",
+      "request_id",
+      "question_id",
+      "origin_source",
+      "parent_id",
+      "task_source",
+      "primitive",
+      "population_ids",
+      "state_sha256",
+      "question_sha256",
+      "ordered_option_keys",
+      "ordered_option_descriptions",
+      "label",
+      "soft",
+      "encoding_sha256",
+      "packed_tokens",
+      "cpu_float32",
+      "logits",
+      "row_sha256"
+    ],
+    "protocol_required_fields": [
+      "schema_version",
+      "experiment_id",
+      "status",
+      "basis_commit",
+      "producer_commit",
+      "producer_code",
+      "runtime",
+      "input_bindings",
+      "source_checkpoint",
+      "data_contract",
+      "tape_contract",
+      "training_contract",
+      "evaluation_contract",
+      "bootstrap_contract",
+      "gate_contract",
+      "checkpoint_contract",
+      "compute_contract",
+      "prohibited",
+      "protocol_sha256"
+    ],
+    "receipt_required_fields": [
+      "schema_version",
+      "status",
+      "protocol_sha256",
+      "seed",
+      "arm",
+      "phase",
+      "run_id",
+      "process",
+      "runtime",
+      "attempt_id",
+      "input_descriptors",
+      "output_descriptors",
+      "counters",
+      "last_committed_checkpoint",
+      "failure",
+      "external_exit_code",
+      "receipt_sha256"
+    ],
+    "receipt_rules": "Exact phase and status enums; record actual attempted and completed work separately. external_exit_code is null unless captured. Process identity includes PID, start UUID and sanitized argv. A missing launcher marker does not create an inferred exit code.",
+    "request_validation": "Require nonempty identities and state, at least one question, unique question IDs, at least two unique option keys, valid plain-integer hard labels, and optional finite nonnegative soft targets of matching length summing to one within 1e-6. Preserve ordinal/Noul order.",
+    "review_index_required_fields": [
+      "schema_version",
+      "kind",
+      "producer_commit",
+      "spec_sha256",
+      "protocol_sha256",
+      "manifest_sha256",
+      "members",
+      "pre_m4_counters",
+      "privacy_scope",
+      "index_sha256"
+    ],
+    "run_compatibility": "Retain the existing run/checkpoint-v3/latest formats. Bind T05-specific fields in spec.t05 and payload.replay_state, enforced by the new wrapper. Historical validation alone is insufficient for T05 tape semantics.",
+    "schema_implementation": "Implement full Draft 2020-12 schemas with exactly these top-level field contracts and additionalProperties=false at fixed levels. Also enforce semantic/cross-artifact constraints, finite values and plain integer types in Python. A schema-only pass is not an integrity pass.",
+    "tape_row_required_fields": [
+      "schema_version",
+      "seed",
+      "arm",
+      "update_index",
+      "model_rng_seed",
+      "slots",
+      "previous_row_sha256",
+      "row_sha256"
+    ],
+    "tape_slot_required_fields": [
+      "slot",
+      "role",
+      "request_uid",
+      "origin_source",
+      "parent_id",
+      "request_id",
+      "request_sha256",
+      "question_permutations",
+      "augmented_request_sha256",
+      "encoding_sha256",
+      "tokens"
+    ]
+  },
+  "basis_commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+  "bound_inputs": {
+    "backbone_config.json": {
+      "purpose": "model configuration and token-budget metadata; no backbone loading before M4",
+      "required": true,
+      "sha256": "3b0eea47c4734682370b66dbd73d655f1100387f683d7c69015f33aa1bac1be9",
+      "size_bytes": 1187
+    },
+    "baseline_development_report": {
+      "evidence_id": "baseline_development_report",
+      "required": true,
+      "sha256": "20fd43e8db495bef1aadf6c3f73977d58042686d6f87e32a1c3e221234aa648b",
+      "size_bytes": 11061758
+    },
+    "comparison_plan": {
+      "evidence_id": "comparison_plan",
+      "required": true,
+      "sha256": "dc8c5e066e15d24eb7aac0034a63663b051bd11a8fb516e9b465484e82dea947",
+      "size_bytes": 12750
+    },
+    "development_comparison": {
+      "evidence_id": "development_comparison",
+      "required": true,
+      "sha256": "4d81804932a96afadd568ff4668c44c7cd993bd9ba8587ddc6042e015908b343",
+      "size_bytes": 23474
+    },
+    "g79_tokenizer/tokenizer.json": {
+      "required": true,
+      "sha256": "fb6235c8bbe93ae2ebaab5a3f3c201f7a69f04fa2491273aa05ef882d1539504",
+      "size_bytes": 34363962
+    },
+    "g79_tokenizer/tokenizer_config.json": {
+      "required": true,
+      "sha256": "55fa4253842c520aa71caf546bb34a2dacaba65d3127e24dc268305bf4d68715",
+      "size_bytes": 627
+    },
+    "korean_suite_development": {
+      "evidence_id": "korean_suite_development",
+      "required": true,
+      "sha256": "82db10f63886cd26f23eac79b0e5c5b87236d7b9eaf7102af5956fd3bdc2355b",
+      "size_bytes": 2380189
+    },
+    "korean_suite_manifest": {
+      "evidence_id": "korean_suite_manifest",
+      "required": true,
+      "sha256": "614a7c0a2febc617f2aaf34bf1906cc8bf0ed958e9138052a37da5ba5b04d5c1",
+      "size_bytes": 5016
+    },
+    "mps_copy_result": {
+      "required": true,
+      "self_sha256": "5fac32c20a2a5c737786bfecf2929b3cbb77df1261011372c64bcb8d90f56c3d",
+      "sha256": "caa7028ef112402c252f7896d3053c83ff64b92fa6e883cd42bcf8324e344b8a",
+      "size_bytes": 15401
+    },
+    "shared_checkpoint_g79": {
+      "evidence_id": "shared_checkpoint_g79",
+      "pre_m4_read_policy": "descriptor and optional streaming hash only; never torch.load, safe_open, zip tensor enumeration, or model construction",
+      "required": true,
+      "sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
+      "size_bytes": 1687348267
+    },
+    "shared_development_report": {
+      "evidence_id": "shared_development_report",
+      "required": true,
+      "sha256": "960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23",
+      "size_bytes": 11043015
+    },
+    "shared_run_manifest": {
+      "evidence_id": "shared_run_manifest",
+      "required": true,
+      "sha256": "bf3cae362537c2c70e51af274be38b60c1b39c74cee914daa3daa82fc1bc7526",
+      "size_bytes": 963
+    },
+    "shared_run_spec": {
+      "evidence_id": "shared_run_spec",
+      "required": true,
+      "sha256": "ee0601619d71e44314aad102dbfccb067fafc5184c9834b4d2786ea66c620eb7",
+      "size_bytes": 34852
+    },
+    "shared_suite_calibration": {
+      "evidence_id": "shared_suite_calibration",
+      "required": true,
+      "sha256": "2b70af1e55714878d5377bb09ececcddf6481bcaf0e26d4ce3304d348fa76476",
+      "size_bytes": 1859074
+    },
+    "shared_suite_development": {
+      "evidence_id": "shared_suite_development",
+      "required": true,
+      "sha256": "1af33ba7170aa4ec64ccd83b81974a5c3c61071b7e5b9b2322d4565f05e36556",
+      "size_bytes": 1686377
+    },
+    "shared_suite_manifest": {
+      "evidence_id": "shared_suite_manifest",
+      "required": true,
+      "sha256": "89b02fe5e76bdfae6ca5930d1e9b15b31dd61188330a68454cc951ac26c24d9c",
+      "size_bytes": 4854
+    },
+    "shared_suite_rendered_state_audit": {
+      "evidence_id": "shared_suite_rendered_state_audit",
+      "required": true,
+      "sha256": "fa1300b3ec30ad321bacaa21ec41fcccb658b8b93378a75aef5d22aa739280b3",
+      "size_bytes": 2868
+    },
+    "shared_suite_train": {
+      "evidence_id": "shared_suite_train",
+      "required": true,
+      "sha256": "e6170e0f5b1920ca56f74a56f341d7fdf3472d70bbb8fe73ab72eb19dfacf22f",
+      "size_bytes": 21442170
+    },
+    "t04_corrected_measured_archive": {
+      "read_policy": "ZIP CRC/index and explicitly named metadata/logit members only; never extract arbitrary members",
+      "required": true,
+      "sha256": "b78510665d78292c3f8ff2bec1650380831ce37f4373ef03a4fa4357456cbc31",
+      "size_bytes": 10813642
+    },
+    "t04_corrected_original_parity": {
+      "descriptor_resolution": "output manifest files.original-parity.json; independently replay all 196 controls",
+      "required": true
+    },
+    "t04_corrected_output_manifest": {
+      "descriptor_resolution": "Resolve its exact bytes from the accepted measured archive and require the recorded self-digest.",
+      "required": true,
+      "self_sha256": "1ff4d7e4719e435d67c42d3c3887491ad776df1978fff9d60dc4666bf58494da"
+    },
+    "t04_corrected_result": {
+      "descriptor_resolution": "Resolve the exact file SHA256 and size from accepted output_manifest.files[result.json].",
+      "required": true,
+      "self_sha256": "54322891b1d3781bc8d34c6afba2af037ea853b6a59219adffcf12eba74a58f7",
+      "source_output_manifest_self_sha256": "1ff4d7e4719e435d67c42d3c3887491ad776df1978fff9d60dc4666bf58494da"
+    },
+    "t04_corrected_semantic_observations": {
+      "descriptor_resolution": "output manifest files.semantic-logits.jsonl; require 1100 ordered records and exact float32 widening",
+      "required": true
+    },
+    "t04_original_plan_manifest": {
+      "identity_kind": "self digest plus children; freeze must add actual file SHA-256/size",
+      "required": true,
+      "self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/development.jsonl": {
+      "required": true,
+      "rows": 196,
+      "sha256": "872c7c6d8ddf796f7897c4d8ee83003f761404031556775b5bf9a4bb036184f0",
+      "size_bytes": 147323,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/exclusions.json": {
+      "required": true,
+      "sha256": "75505aed28305cf93bcc04c08e686a3dbd0508aa4fef74b530ece4d207acd0d3",
+      "size_bytes": 5511606,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/protocol.json": {
+      "required": true,
+      "sha256": "d87eb1f53a8dbee4439026b99127a22df05761e41d3928bb78cf6cf2353c1c95",
+      "size_bytes": 12578,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/semantic-variants.jsonl": {
+      "required": true,
+      "rows": 1100,
+      "sha256": "41d9addc1e15a18dba4cbe26934977103f49d088ac66aabb5a11d471235ffec5",
+      "size_bytes": 925008,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/support-calibration.jsonl": {
+      "required": true,
+      "rows": 512,
+      "sha256": "06db42b5e9525bf74ab708298a92322f1999bf5f570210f599487dfd165dea2f",
+      "size_bytes": 195502,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "t04_plan/support-fit.jsonl": {
+      "required": true,
+      "rows": 2048,
+      "sha256": "1bb408565991c865974966a02bc0c217e5d8bca3b10c1c4f621ca0d3e2fb909b",
+      "size_bytes": 789374,
+      "source_manifest_self_sha256": "ea41f5f7a3ba799dc14c24ce3368c38c97684d4c4bf9bafff993dcc6e8a1a663"
+    },
+    "transfer_suite_development": {
+      "evidence_id": "transfer_suite_development",
+      "required": true,
+      "sha256": "ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e",
+      "size_bytes": 803309
+    },
+    "transfer_suite_manifest": {
+      "evidence_id": "transfer_suite_manifest",
+      "required": true,
+      "sha256": "31677c2256b406222e7d94ffdc0a02a70ce05746b9efe307876024c4e77291d1",
+      "size_bytes": 6421
+    }
+  },
+  "branch": "next/science-coverage",
+  "checkpointing": {
+    "attempt_counter_rule": "Checkpoint counters describe committed work: four training forwards and one optimizer update per committed step. Process receipts additionally record attempted work, including failed or interrupted phases. Do not reset cumulative attempted work when an explicitly reviewed recovery is allowed.",
+    "base_format": 3,
+    "checkpoint_config_fields": {
+      "backbone": "jhu-clsp/mmBERT-small",
+      "batch": 8,
+      "brier_w": 0.5,
+      "eval_per_source": 0,
+      "head_lr": 5e-05,
+      "lr": 5e-06,
+      "max_len": 2048,
+      "microbatch": 2,
+      "per_source": 0,
+      "seed": "17 or 23 from the frozen arm tape",
+      "sources": "lexicographically sorted unique task-source labels of this arm's normalized pool, joined by comma",
+      "steps": 512
+    },
+    "data_state": {
+      "cursor": "completed optimizer updates",
+      "epoch": 0,
+      "order": "list(range(512))"
+    },
+    "extra_replay_state": [
+      "protocol_sha256",
+      "tape_sha256",
+      "seed",
+      "arm",
+      "next_update",
+      "committed_tape_prefix_sha256",
+      "committed_model_forward_calls",
+      "committed_optimizer_updates"
+    ],
+    "failure": "On nonfinite values, OOM or an exception during an update, do not publish partially mutated state as a complete update. Preserve the last validated checkpoint, a strict-JSON failure receipt and attempt counters. Never delete evidence to restart under the same identity.",
+    "generic_train_size": 512,
+    "operational_disk": "Before starting each seed pair, require at least32 times the bound G79 checkpoint byte size free on the same volume (conservative reserve for24 scheduled checkpoints plus interrupted/temporary state); never compensate for low space by deleting protected pins.",
+    "process_boundaries": "Acquire a single protocol-bound nonblocking MPS-owner flock before any MPS operation; retain it for loading, training/evaluation and publication. Also use the per-run lock. All study commands share the same owner identity. No concurrent accelerator workload or alternate lock path.",
+    "publication": "Reuse the unchanged CheckpointStore publication validator and sync sequence. Immediately after a successful publication, pin that generation under pins/ with an exclusive hard link on the same filesystem and an immutable descriptor. Do this before another update. Reconcile a missing pin only from a manifest-validated committed checkpoint. Historical rolling cleanup remains restricted to root checkpoint files; never delete pins.",
+    "resume": "Only explicit resume-current is supported. Override the wrapper load path to validate the current descriptor without automatic previous fallback. Validate all checkpoint content in fresh objects before mutation; require the same run, seed, arm, protocol, tape, config, source identity, tokenizer, backend and runtime. Use native optimizer state restoration; no blanket device casts.",
+    "retention": "Keep all12 scheduled checkpoint generations per completed arm and every graceful-interruption generation. Do not rename/edit G79 or garbage-collect historical qualified evidence.",
+    "retry_policy": "No automatic retry or supervisor restart. Graceful interrupted-current resume is allowed under the same M4 identities and confirmed current receipt, without changing tape/config. Abrupt termination, physical-corruption rollback, device failure, or uncertain partial optimizer commit needs a new narrow recovery review before execution. Completed arms cannot resume.",
+    "rng": "Record and validate Python, Torch CPU, and MPS RNG states actually used. An independent validator must not change live RNG state. Never import generation-79 RNG. Restore the current checkpoint state before applying the next tape-indexed update seed.",
+    "run_spec": "Use the historical compatibility config fields and append the complete spec.t05 identity object. Set train_fingerprint to the exact arm-tape digest and validation_fingerprint to the evaluation-inventory digest. Override training_code with the new executed source closure. Extra ordinal/scheduler/tape/owner settings must be in spec.t05, not silently omitted from the run identity.",
+    "schedule": [
+      0,
+      50,
+      100,
+      150,
+      200,
+      250,
+      300,
+      350,
+      400,
+      450,
+      500,
+      512
+    ],
+    "signals": "The first SIGTERM/SIGINT/SIGHUP sets a stop flag. Complete the active four-microbatch update and publish an interrupted checkpoint/receipt at that boundary; no endpoint evaluation follows. If update 512 has completed, completed takes precedence. Restore original signal handlers in finally. A forced second signal leaves the last committed checkpoint authoritative and requires recovery review.",
+    "strict_relations": [
+      "step==cursor==next_update",
+      "epoch==0",
+      "order==list(range(512))",
+      "skipped==0",
+      "0<=step<=512",
+      "status completed iff step512; interrupted only below512",
+      "scheduler.last_epoch==step",
+      "scheduler._step_count==step+1",
+      "every AdamW step==step; step0 has no moments",
+      "run/spec/protocol/tape/initial-source/seed/arm identity equality"
+    ],
+    "t05_spec_fields": [
+      "version",
+      "protocol_sha256",
+      "plan_manifest_sha256",
+      "initial_source_checkpoint",
+      "initial_source_run_id",
+      "initial_source_spec_sha256",
+      "seed",
+      "arm",
+      "tape_descriptor",
+      "evaluation_inventory_descriptor",
+      "ordinal_weight",
+      "optimizer_settings",
+      "schedule_table_descriptor",
+      "model_rng_policy",
+      "maximum_length",
+      "microbatch",
+      "owner_lock_identity",
+      "source_closure",
+      "runtime"
+    ]
+  },
+  "cli_contract": {
+    "after_m4_order": [
+      "Verify reviewed source/commit/protocol/manifest and acquire the global MPS owner lock.",
+      "Initialize seed 17 control.",
+      "Initialize seed 17 targeted.",
+      "Verify the initial pair.",
+      "Train seed 17 control to exactly update 512.",
+      "Train seed 17 targeted to exactly update 512.",
+      "Bind both completed endpoints.",
+      "Evaluate control, then targeted, on the frozen populations.",
+      "Analyze and independently verify the seed-17 pair and gate.",
+      "Only if eligible: initialize, train, evaluate and analyze seed 23 under the same order and recipe.",
+      "Obtain M5 measured-result review; do not promote a checkpoint automatically."
+    ],
+    "base": "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen python -m experiments.coverage_v1.replay_v1",
+    "before_m4_commands": [
+      "test \"$(git branch --show-current)\" = next/science-coverage",
+      "git merge-base --is-ancestor 9c4e0e8227f0f3299472a1b195cbbe98280491dc HEAD",
+      "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen --with pytest pytest tests/coverage_v1/replay_v1 -q",
+      "uv run --frozen --with ruff ruff check experiments/coverage_v1/replay_v1 tests/coverage_v1/replay_v1",
+      "python -m compileall -q experiments/coverage_v1/replay_v1 tests/coverage_v1/replay_v1",
+      "git diff --exit-code 9c4e0e8227f0f3299472a1b195cbbe98280491dc -- src/haetae experiments/train_shared.py experiments/shared_state.py experiments/kev_adapter.py experiments/coverage_v1/diagnostic_v1.py experiments/coverage_v1/run_diagnostic_v1.py experiments/coverage_v1/semantic_output_amendment_v1.py tools/evidence_registry.py research/evidence pyproject.toml uv.lock",
+      "git diff --check",
+      "git commit -m \"Freeze T05 paired replay implementation\" # after reviewed staged allowed files only",
+      "export T05_PRODUCER_COMMIT=\"$(git rev-parse HEAD)\"",
+      "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen python -m experiments.coverage_v1.replay_v1 freeze --paths \"$T05_PATHS\" --registry research/evidence/index.json --out \"$T05_FREEZE_A\"",
+      "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen python -m experiments.coverage_v1.replay_v1 freeze --paths \"$T05_PATHS\" --registry research/evidence/index.json --out \"$T05_FREEZE_B\"",
+      "diff -r \"$T05_FREEZE_A\" \"$T05_FREEZE_B\"",
+      "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen python -m experiments.coverage_v1.replay_v1 verify-plan --plan \"$T05_FREEZE_A\" --paths \"$T05_PATHS\" --registry research/evidence/index.json",
+      "PYTHONPATH=.:src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --frozen python -m experiments.coverage_v1.replay_v1 package-review --plan \"$T05_FREEZE_A\" --paths \"$T05_PATHS\" --registry research/evidence/index.json --out \"$T05_REVIEW_ZIP\"",
+      "STOP: request exact-commit M4 review. No initialize, train, or evaluate command before explicit START."
+    ],
+    "common_preflight": "--paths <private explicit input map> --registry research/evidence/index.json --out <fresh path>",
+    "shell_rules": "No retry loops. Use rc for captured shell return status, never zsh status. Use pipefail when piping to tee. Leave unavailable external exit codes null. No timing benchmark command is part of T05.",
+    "subcommands": {
+      "analyze": "--plan --seed --control-report --targeted-report --out <fresh directory>; CPU-only. Write paired result and pilot gate with complete input bindings.",
+      "evaluate": "--plan --paths --seed --arm --run --pair-terminal-bindings --out <freshreportdir> --reviewed-commit --reviewed-protocol-sha256 --reviewed-manifest-sha256 --allow-reviewed-inference; requirebothsame-seedarmscompleted512. Neveracceptintermediate.",
+      "freeze": "--paths --registry --out; no hyperparameterflags, no allow-inference/trainingoption.",
+      "initialize": "--plan --paths --seed {17,23} --arm {control,targeted} --run <freshrundir> --reviewed-commit --reviewed-protocol-sha256 --reviewed-manifest-sha256 --allow-reviewed-inference; seed23 additionallyrequires --pilot-gate. This publishesstep0and196controlparityonly,zerooptupdates.",
+      "package-review": "--plan --paths --registry --out <fresh.zip>; payloadallowlistexact andprivate.",
+      "train": "--plan --paths --seed --arm --run --initial-pair --reviewed-commit --reviewed-protocol-sha256 --reviewed-manifest-sha256 --allow-reviewed-training [--resume-current]; no steps/batch/lr/sources/maxlenoverride. seed23 requires --pilot-gate.",
+      "verify-initial-pair": "--plan --seed --control-run --targeted-run --out <fresh pair receipt>; inspect only validated post-M4 step-zero identities and receipts. Require exact source/parameter equality and both parity reports.",
+      "verify-plan": "--plan --paths --registry; fullyreconstructcode,inputinventory,tapes,metricpopulation,schemas,digests withoutweights.",
+      "verify-result": "--plan --seed --result --control-report --targeted-report; CPU-only exact replay of inventories, metrics, bootstrap draws, gates and self-digests."
+    }
+  },
+  "commit_sequence": [
+    {
+      "acceptance": "Input, schema, leakage and identity tests pass; literal training rubrics match the accepted native templates.",
+      "files": [
+        "experiments/coverage_v1/replay_v1/__init__.py",
+        "experiments/coverage_v1/replay_v1/contracts.py",
+        "experiments/coverage_v1/replay_v1/inputs.py",
+        "plans/next-v1/t05-v1/implementation-spec.json",
+        "plans/next-v1/t05-v1/artifact-schemas.json",
+        "tests/coverage_v1/replay_v1/test_inputs.py"
+      ],
+      "name": "T05 contract and immutable input audit",
+      "order": 1
+    },
+    {
+      "acceptance": "Both seed pairs regenerate identical tapes; all alignment, counts, budgets and schedules validate.",
+      "files": [
+        "experiments/coverage_v1/replay_v1/tapes.py",
+        "experiments/coverage_v1/replay_v1/freeze.py",
+        "tests/coverage_v1/replay_v1/test_tapes.py",
+        "tests/coverage_v1/replay_v1/test_freeze.py"
+      ],
+      "name": "T05 deterministic paired tapes and freeze",
+      "order": 2
+    },
+    {
+      "acceptance": "CPU loss/gradient references, spy update engine, initialization, resume, signal, failure and locking tests pass.",
+      "files": [
+        "experiments/coverage_v1/replay_v1/state.py",
+        "experiments/coverage_v1/replay_v1/train.py",
+        "tests/coverage_v1/replay_v1/test_state.py",
+        "tests/coverage_v1/replay_v1/test_train.py"
+      ],
+      "name": "T05 versioned initialization and update-boundary resume",
+      "order": 3
+    },
+    {
+      "acceptance": "Independent metrics, whole-parent bootstrap, exact inventories, gate boundaries and seed-23 rejection tests pass.",
+      "files": [
+        "experiments/coverage_v1/replay_v1/evaluate.py",
+        "experiments/coverage_v1/replay_v1/analysis.py",
+        "tests/coverage_v1/replay_v1/test_evaluate.py",
+        "tests/coverage_v1/replay_v1/test_analysis.py"
+      ],
+      "name": "T05 endpoint evaluation and paired gates",
+      "order": 4
+    },
+    {
+      "acceptance": "All focused checks and historical-source diff checks pass; commit the producer, then freeze twice and package.",
+      "files": [
+        "experiments/coverage_v1/replay_v1/__main__.py",
+        "experiments/coverage_v1/replay_v1/package.py",
+        "tests/coverage_v1/replay_v1/test_cli.py",
+        "tests/coverage_v1/replay_v1/test_package.py",
+        "plans/next-v1/t05-v1/CHECKLIST.md"
+      ],
+      "name": "T05 review package and guarded CLI",
+      "order": 5
+    },
+    {
+      "acceptance": "Record exact producer and artifact identities in an append-only handoff. The actual run checks out the reviewed producer commit.",
+      "files": [
+        "plans/next-v1/t05-v1/M4_HANDOFF.md",
+        "RESEARCH_STATE.md"
+      ],
+      "name": "T05 M4 handoff metadata",
+      "order": 6
+    }
+  ],
+  "compute_budget": {
+    "extra_execution": "No retries included. All aborted/partialexecutions separatelyrecordattempted andcommittedcalls; recoveryrequiringextraactualupdates orforwards mustreceive narrowreview. No benchmarktimingrerun orfeatureextraction.",
+    "full_if_replication_authorized": {
+      "arms": 4,
+      "encoded_requests": 36636,
+      "model_forward_calls": 18320,
+      "optimizer_updates": 2048
+    },
+    "per_arm": {
+      "endpoint_forward_calls": 2434,
+      "endpoint_sequences": 4867,
+      "logical_optimizer_updates": 512,
+      "train_backward_calls": 2048,
+      "train_forward_calls": 2048,
+      "train_requests": 4096,
+      "zero_parity_forward_calls": 98,
+      "zero_parity_sequences": 196
+    },
+    "pilot_two_arms": {
+      "encoded_requests": 18318,
+      "model_forward_calls": 9160,
+      "optimizer_updates": 1024
+    },
+    "pre_m4": {
+      "model_forwards": 0,
+      "native_mps_operations": 0,
+      "optimizer_step_calls": 0,
+      "real_model_loads": 0,
+      "tokenizer_only_cpu": "allowed, local exactfiles, no weights"
+    }
+  },
+  "data": {
+    "exclusion_contract": {
+      "baseline_pretraining_limit": "No new claim of unknown original-backbone or older-baseline decontamination. Existing common-clean comparison exclusions remain in force.",
+      "duplicates": "Keep accepted unique support only. Canonicalize Choice key-description associations when checking semantic conflicts; never canonicalize away Score ordinal order. Fail any support duplicate, cross-role overlap, or contradiction. Original replay duplicates intentionally retained if they are distinct valid frozen requests.",
+      "exact_state_digest": "SHA256(canonical JSON of normalize_request(raw)[state]) using the accepted render semantics; string bytes are not re-normalized or stripped.",
+      "new_support_disjoint_from": [
+        "generation79 original train states and source-parents",
+        "shared_suite_calibration",
+        "shared_suite_development",
+        "transfer_suite_development",
+        "korean_suite_development",
+        "T04 support-calibration",
+        "every conflict/rendered-state exclusion in T04 removal evidence"
+      ],
+      "parent_identity": "tuple(origin_source, group_id if nonempty else request_id), with exact native T04 parent IDs for support"
+    },
+    "original_pool": {
+      "questions": 23068,
+      "requests": 15572,
+      "sampling_unit": "normalized request occurrence with original source/parent/question identities; do not collapse multiple distinct requests from one parent",
+      "source": "shared_suite_train",
+      "validation": "Byte hash first; normalize without changing state serialization or option/rubric order. Validate complete request/question inventory, plain-int labels, finite targets, semantic mapping, and zero contradictions. Fail rather than silently edit historical originals."
+    },
+    "support_pool": {
+      "calibration_excluded_count": 512,
+      "emotion": 1536,
+      "exact_reuse": true,
+      "fit_per_class": 256,
+      "offensive": 512,
+      "source": "t04_plan/support-fit.jsonl",
+      "total": 2048,
+      "validation": "Require source=train identity, raw source row, source-namespaced parent, rendered-state digest, native label, selection digest, and exact membership/order against the accepted T04 manifest. Re-run exclusion intersection from bound shared train/calibration/three public development files and T04 support-calibration/exclusions/removal records. No reselection, replenishment, reassignment, or new source fetch."
+    },
+    "target_rendering": {
+      "emotion": {
+        "instructions": "Which emotion does the writer express?",
+        "label": "index of support semantic label before recorded Choice permutation",
+        "option_keys": [
+          "sadness",
+          "joy",
+          "love",
+          "anger",
+          "fear",
+          "surprise"
+        ],
+        "options": [
+          "sadness",
+          "joy",
+          "love",
+          "anger",
+          "fear",
+          "surprise"
+        ],
+        "question_id": "emotion",
+        "soft": null,
+        "source": "emotion",
+        "type": "choice"
+      },
+      "request_metadata": "Use original support parent/source; derive new request ID as t05/support/<source>/<row>, retain original T04 parent unchanged. State is exactly original support text. question_id and metadata are not model-visible. Validate these literal rubrics against the unique original native T04 templates before freezing.",
+      "tweet_offensive": {
+        "instructions": "Is this post offensive?",
+        "label": "0 if the support semantic label is true; otherwise 1",
+        "option_keys": [
+          "true",
+          "false"
+        ],
+        "options": [
+          "yes: Contains insults, threats, profanity directed at someone, or hateful content",
+          "no: Not offensive"
+        ],
+        "question_id": "tweet_offensive",
+        "soft": null,
+        "source": "tweet_offensive",
+        "type": "noul"
+      }
+    },
+    "token_budget": "Before M4, local tokenizer-only encode every materialized training occurrence and every distinct evaluation request using the unchanged packing function. Store input-token/segment/position/readout-index digests and lengths. Reject candidate or state truncation; no runtime survivors-only training. Runtime must reproduce the frozen encoding digests."
+  },
+  "evaluation": {
+    "bootstrap_secondary_rule": "Bootstrap only the six frozen primary/guardrail populations. Prompt families and individual source breakdowns are descriptive; do not add a prompt-selection gate.",
+    "data_transfer": "For every original and secondary observation, detach and copy to CPU while float32; validate shape/dtype/finiteness, then widen on CPU to float64. Store both vectors and validate exact float32 representability and widening in final replay. Do not substitute cached logits for newly computed observations.",
+    "endpoint": "Evaluate both step512 arms only, after both terminal checkpoints exist and are verified. No intermediate model evaluation, best-checkpoint choice, validation-based stopping, or arm-specific recalibration.",
+    "fit_forbidden": [
+      "temperature fitting",
+      "logistic recalibration",
+      "new linear probe",
+      "threshold tuning",
+      "class-prior adaptation",
+      "prompt or variant selection"
+    ],
+    "full_primary": {
+      "decision": {
+        "questions": 1463,
+        "requests": 1199
+      },
+      "korean": {
+        "questions": 5000,
+        "requests": 2000
+      },
+      "total_questions": 7227,
+      "total_requests": 3963,
+      "transfer": {
+        "questions": 764,
+        "requests": 764
+      }
+    },
+    "initial_output_parity": "Each new arm must pass the 196-original step-zero parity before training. No selection of checkpoints or prompts based on this check.",
+    "metrics": {
+      "brier_annotation": "1+sum(p^2)-2*dot(p,target)",
+      "brier_histogram": "sum((p-target)^2)",
+      "calibration": "ECE with 15 equal-width bins is descriptive only. No calibrator fitting or coverage certification.",
+      "macro_f1": "Compute only under a fixed semantic ontology. Native emotion uses its six named classes; offensive uses false/true. Do not pool candidate-slot labels across mixed option meanings or report slot-based semantic-family F1.",
+      "nll": "-sum(target*centered_log_softmax(logits/T)); no rounding or floor",
+      "offensive": "At each temperature/condition report TP, FP, TN, FN, precision, recall, specificity, F1, balanced accuracy, accuracy, predicted-positive rate, positive-label prevalence, and AUROC. AUROC uses z_true-z_false with half credit for ties, avoiding probability saturation. An undefined ratio is reported as 0 together with denominator_zero=true. Absence of either class in a required AUROC population is an error.",
+      "rps": "mean((cumsum(p)[:-1]-cumsum(target)[:-1])**2), K>=2",
+      "score_expected_index_mae": "abs(sum(k*p[k])-hard_label)",
+      "semantic": "Compare semantic action and semantic-key-aligned total variation with the same checkpoint's original variant. Report every rotation, any-rotation action change, aliases, lexicon, and both augmented populations separately. Never average rotations into a newly selected inference algorithm.",
+      "soft_targets": "Preserve original soft targets for CE, both Brier definitions, and RPS. Hard labels are used for accuracy. Validate K, semantic label bounds, finiteness and target sums before metric calculation.",
+      "source_macro": "Mean of per-task-source question means, using the frozen source identity; do not substitute origin-source balancing.",
+      "target_accuracy": "Select the first maximum raw logit under the frozen option order, then compare semantic keys. Positive temperature does not change the declared action rule."
+    },
+    "numeric_replay_policy": "On the exact frozen software stack, require exact serialized scientific result replay. For independent cross-platform review only, allow an explicitly labeled diagnostic comparison with at most 1e-10 absolute difference in continuous metric/interval values and exact discrete identities/counts/actions/gates; never rewrite the frozen result or claim byte-identical replay when it differs.",
+    "ordering": "Primary tracks: decision, transfer, Korean. Within each, sort by (origin_source,parent_id,request_id), preserving question order. Secondary non-original variants retain the accepted T04 order. Freeze every batch boundary and count before M4.",
+    "per_endpoint": {
+      "batch": 2,
+      "context": "torch.inference_mode()",
+      "forward_calls": 2434,
+      "forward_calls_by_track": {
+        "decision": 600,
+        "korean": 1000,
+        "secondary": 452,
+        "transfer": 382
+      },
+      "gradients": false,
+      "prediction_vectors": 8131,
+      "requests_encoded": 4867,
+      "temperature_primary": 1.5197255188671874,
+      "temperature_secondary_raw": 1.0
+    },
+    "populations": {
+      "decision_common_clean": {
+        "aggregation": "equal_task_source_macro",
+        "gate_metric": "accuracy",
+        "questions": 1463,
+        "requests": 1199,
+        "selector": "frozen comparison plan decision exclusions applied by exact question keys"
+      },
+      "emotion_native": {
+        "aggregation": "question_weighted",
+        "gate_metric": "accuracy",
+        "origin": "transfer",
+        "parents": 80,
+        "questions": 92,
+        "selector": "exact T04 native_six_class keyed membership"
+      },
+      "korean_common_clean": {
+        "aggregation": "equal_task_source_macro",
+        "gate_metric": "accuracy",
+        "questions": 5000,
+        "requests": 2000,
+        "selector": "frozen comparison plan Korean membership"
+      },
+      "offensive_native": {
+        "aggregation": "question_weighted",
+        "gate_metric": "accuracy",
+        "origin": "transfer",
+        "parents": 80,
+        "questions": 80,
+        "selector": "exact T04 native_binary keyed membership"
+      },
+      "other_transfer": {
+        "aggregation": "equal_task_source_macro",
+        "gate_metric": "nll",
+        "questions": 568,
+        "selector": "transfer common-clean minus ALL task-source emotion and tweet_offensive questions including augmented emotion",
+        "task_sources": 9
+      },
+      "score_common_clean": {
+        "aggregation": "equal_score_task_source_macro",
+        "gate_metric": "rps",
+        "per_source_questions": {
+          "decision/amazon": 80,
+          "decision/sst5": 80,
+          "decision/yelp": 80,
+          "transfer/contrastive_deadline": 40
+        },
+        "questions": 280,
+        "selector": "all Score questions in decision+transfer+Korean common-clean; namespaced task source=(track,source)",
+        "task_sources": 4
+      }
+    },
+    "reporting": "Report raw and fixed-temperature metrics, with overall, source, source-macro and primitive breakdowns where meaningful. Keep original native wording primary and all prompt perturbations secondary. Always show both arms relative to generation 79, offensive recall/precision tradeoffs, and failures.",
+    "secondary": {
+      "augmented_emotion": {
+        "none_candidate": 12,
+        "none_target": 12
+      },
+      "families": [
+        "original",
+        "cyclic_rotation_1..6 where present",
+        "alias_prefix",
+        "native_taxonomy_lexicon"
+      ],
+      "full_variant_rows": 1100,
+      "new_executions": 904,
+      "reuse_originals": 196,
+      "rule": "Evaluate non-original variants in their frozen order after the three full primary tracks. Do not average rotations to create a new inference algorithm. Report family/population results separately; no variant enters the pilot success gate.",
+      "source": "exact accepted T04 1100 variant inventory"
+    },
+    "zero_reference": "Materialize cached G79 predictions for7227 common-clean questions plus904 non-original T04 variants. Bind original shared report and accepted corrected T04 observations. Original-family duplicates must agree under accepted parity and are referenced rather than rerun. No refitting and no new full zero-update population run."
+  },
+  "files": {
+    "allowed_existing_edit": "RESEARCH_STATE.md may receive an append-only T05 handoff after the producer commit and freeze; do not edit accepted historical entries.",
+    "historical_immutable": [
+      "experiments/train_shared.py",
+      "experiments/shared_state.py",
+      "experiments/kev_adapter.py",
+      "experiments/freeze_shared_suite.py",
+      "experiments/freeze_korean_suite.py",
+      "experiments/freeze_comparison.py",
+      "experiments/comparison_protocol.py",
+      "experiments/evaluate_shared.py",
+      "experiments/evaluate_baseline.py",
+      "experiments/compare_development.py",
+      "src/haetae/*",
+      "experiments/coverage_v1/*.py",
+      "tools/evidence_registry.py",
+      "tools/diagnose_mps_copy_only.py",
+      "research/evidence/*",
+      "pyproject.toml",
+      "uv.lock",
+      "all accepted original/held/corrected evidence bytes"
+    ],
+    "integration": "Stay on the existing science branch. No packaging/docs merge, rebase, amended producer commit, or historical-source repair after the M4 freeze.",
+    "new_modules": {
+      "experiments/coverage_v1/replay_v1/__init__.py": {
+        "functions": [],
+        "purpose": "Empty versioned package; no import-time I/O or runtime construction."
+      },
+      "experiments/coverage_v1/replay_v1/__main__.py": {
+        "functions": [
+          "main"
+        ],
+        "purpose": "Dispatch freeze, verify-plan, package-review, initialize, train, evaluate, analyze, verify-result. Runtime imports occur only after reviewed-identity gate."
+      },
+      "experiments/coverage_v1/replay_v1/analysis.py": {
+        "functions": [
+          "per_question_metrics",
+          "aggregate_metrics",
+          "bootstrap_parent_differences",
+          "offensive_diagnostics",
+          "compute_pilot_gate",
+          "verify_pilot_gate",
+          "replication_summary",
+          "verify_result"
+        ],
+        "purpose": "CPU-only exact-membership paired analysis; explicit deltas and fixed gate; no model imports required."
+      },
+      "experiments/coverage_v1/replay_v1/contracts.py": {
+        "functions": [
+          "canonical_bytes",
+          "digest_object",
+          "strict_json_loads",
+          "validate_schema",
+          "validate_descriptor",
+          "capture_allowed_file",
+          "write_exclusive_json",
+          "producer_identity",
+          "assert_reviewed_identity"
+        ],
+        "purpose": "Strict schemas and one-buffer hash/parse evidence boundary; no imports of Torch, Transformers, datasets, or model modules."
+      },
+      "experiments/coverage_v1/replay_v1/evaluate.py": {
+        "functions": [
+          "validate_evaluation_request",
+          "cpu_first_logits",
+          "run_initial_parity",
+          "evaluate_endpoint",
+          "validate_predictions",
+          "replay_metrics"
+        ],
+        "purpose": "Fixed generation-79/step-zero parity and terminal-only native/secondary evaluation. No fitting or epoch selection."
+      },
+      "experiments/coverage_v1/replay_v1/freeze.py": {
+        "functions": [
+          "freeze",
+          "verify_plan",
+          "token_budget_preflight",
+          "freeze_source_identity"
+        ],
+        "purpose": "Model-free population/tape/metric/runtime freeze; tokenizer-only local preflight, no weights or tensor checkpoint access."
+      },
+      "experiments/coverage_v1/replay_v1/inputs.py": {
+        "functions": [
+          "load_bound_sources",
+          "normalize_original_pool",
+          "validate_target_support",
+          "freeze_target_rendering",
+          "build_evaluation_inventory",
+          "build_zero_reference",
+          "audit_exclusions",
+          "validate_semantic_identity"
+        ],
+        "purpose": "Exact T04 support reuse, original replay pool, exclusion verification, fixed evaluable populations. Never calls dataset LOADERS or downloads a suite."
+      },
+      "experiments/coverage_v1/replay_v1/package.py": {
+        "functions": [
+          "build_m4_package",
+          "verify_package"
+        ],
+        "purpose": "Exact private review package, path-safe archive, member hashes/CRC, copied public-only source evidence, no checkpoint or raw model files."
+      },
+      "experiments/coverage_v1/replay_v1/state.py": {
+        "functions": [
+          "MpsOwnerLock",
+          "ReplayCheckpointStore",
+          "make_t05_run_spec",
+          "validate_t05_checkpoint",
+          "publish_and_pin",
+          "load_current_only",
+          "restore_into_fresh_objects",
+          "tensor_state_identity",
+          "verify_initial_pair",
+          "append_execution_event"
+        ],
+        "purpose": "Thin versioned wrapper over unchanged v3 checkpoint implementation. No generic replacement of the historical checkpoint system."
+      },
+      "experiments/coverage_v1/replay_v1/tapes.py": {
+        "functions": [
+          "hash_order",
+          "make_original_stream",
+          "make_support_stream",
+          "make_choice_permutations",
+          "build_pair_tapes",
+          "replay_update",
+          "validate_pair_alignment",
+          "exposure_report"
+        ],
+        "purpose": "Pure deterministic construction for both seeds, complete per-occurrence permutations and prefix hashes."
+      },
+      "experiments/coverage_v1/replay_v1/train.py": {
+        "functions": [
+          "initialize_arm",
+          "build_scheduler",
+          "validate_batch",
+          "run_update",
+          "train_arm",
+          "request_stop"
+        ],
+        "purpose": "Post-M4 weight-only initialization and exactly 512 matched-tape updates. No evaluation or data selection inside the training loop."
+      }
+    },
+    "new_plan_files": [
+      "implementation-spec.json",
+      "artifact-schemas.json",
+      "CHECKLIST.md",
+      "M4_HANDOFF.md"
+    ],
+    "new_plan_root": "plans/next-v1/t05-v1",
+    "new_tests_root": "tests/coverage_v1/replay_v1",
+    "no_new_worktree": true
+  },
+  "gates": {
+    "direction": "candidate targeted step512 minus same-seed control step512; positiveaccuracybetter, negativeNLL/Brier/RPSbetter",
+    "failure": "Any failed or unestimable required gate blocks seed 23. Preserve both reports and terminal checkpoints. Do not extend the 512-update endpoint, swap data, or replace a seed.",
+    "generation79_absolute_changes": "Report generation-79-relative changes for both arms. These are not an undeclared seventh launch gate; any absolute deterioration must remain visible and prevents unsupported deployment claims.",
+    "precision": "Use unrounded values. Target-accuracy thresholds use integer correct-count differences; source-macro accuracy may use exact rational counts. Do not introduce display rounding or a post-result epsilon to obtain a pass.",
+    "replicated_candidate": "After seed 23 is authorized and completed: replicated_candidate requires all six point gates in both seeds and positive seed-17 one-sided 97.5% lower bounds for both target accuracy differences. directional_replication reports whether both seed-23 target differences are positive even when this stricter label fails. No automatic release or checkpoint promotion.",
+    "replicated_candidate_note": "Separate replication launch from the final research label. Seed 23 launch requires only the validated seed-17 six-gate pass. A usable replicated candidate additionally needs the same gains/retention limits in seed 23 and both positive seed-17 one-sided 97.5% target lower bounds. Report weaker directional replication separately, never as a production endorsement.",
+    "requirements": [
+      {
+        "aggregation": "question_weighted",
+        "equivalent_integer_test": "targeted_correct-control_correct >=5 of92",
+        "id": "emotion_gain",
+        "metric": "accuracy",
+        "operator": ">=",
+        "population": "emotion_native",
+        "threshold": 0.05
+      },
+      {
+        "aggregation": "question_weighted",
+        "equivalent_integer_test": "targeted_correct-control_correct >=4 of80",
+        "id": "offensive_gain",
+        "metric": "accuracy",
+        "operator": ">=",
+        "population": "offensive_native",
+        "threshold": 0.05
+      },
+      {
+        "aggregation": "equal_task_source_macro",
+        "id": "decision_retention",
+        "metric": "accuracy",
+        "operator": ">=",
+        "population": "decision_common_clean",
+        "threshold": -0.01
+      },
+      {
+        "aggregation": "equal_task_source_macro",
+        "id": "korean_retention",
+        "metric": "accuracy",
+        "operator": ">=",
+        "population": "korean_common_clean",
+        "threshold": -0.01
+      },
+      {
+        "aggregation": "equal_task_source_macro",
+        "id": "other_transfer_retention",
+        "metric": "nll",
+        "operator": "<=",
+        "population": "other_transfer",
+        "temperature": 1.5197255188671874,
+        "threshold": 0.03
+      },
+      {
+        "aggregation": "equal_score_task_source_macro",
+        "id": "ordinal_retention",
+        "metric": "rps",
+        "operator": "<=",
+        "population": "score_common_clean",
+        "temperature": 1.5197255188671874,
+        "threshold": 0.02
+      }
+    ],
+    "seed23_authorization": "A pilot-gate.json becomes eligible only after both seed-17 terminal checkpoints and complete reports validate, the paired membership matches exactly, all metrics are replayed, and every one of the six requirements passes. Bind the endpoint checkpoint/report hashes, protocol, manifest, and code. The seed-23 initializer independently replays the gate rather than trusting an eligibility Boolean."
+  },
+  "identity_rules": {
+    "additional_runtime_fields_to_freeze": [
+      "datasets version from registered G79 run metadata",
+      "installed tokenizers version",
+      "installed safetensors version",
+      "actual CPU thread settings",
+      "gradient_checkpointing=false",
+      "MPS fallback disabled",
+      "the declared per-update RNG policy"
+    ],
+    "backbone": "jhu-clsp/mmBERT-small",
+    "backbone_revision": "abc32620dd4f6ab06f5fbe905dc25f310618e09f",
+    "checkpoint_binding": {
+      "attention_implementation": "eager",
+      "checkpoint": {
+        "evidence_id": "shared_checkpoint_g79",
+        "sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
+        "size_bytes": 1687348267
+      },
+      "generation": 79,
+      "maximum_length": 2048,
+      "model_config_fingerprint": "c7de60b92d29058f37e1272cb548ef212841fee04b365ea46924df069edb6c51",
+      "run_id": "71d06d48-a3cf-4ddc-bfe2-2315dbe66da8",
+      "spec_sha256": "2797fc5a985c315f035658790c6ba582d634fe2ceeaa2d8fc5d35e78a100e9d5",
+      "tokenizer_files": {
+        "tokenizer.json": {
+          "sha256": "fb6235c8bbe93ae2ebaab5a3f3c201f7a69f04fa2491273aa05ef882d1539504",
+          "size_bytes": 34363962
+        },
+        "tokenizer_config.json": {
+          "sha256": "55fa4253842c520aa71caf546bb34a2dacaba65d3127e24dc268305bf4d68715",
+          "size_bytes": 627
+        }
+      },
+      "tokenizer_fingerprint": "eedf10dda29c5fda59481b04cab55da64c03a545b8b437a33ea73562b88a5ad2"
+    },
+    "code_digest": "Sorted exact executed source closure: all new replay_v1 files plus imported packing/training/checkpoint/normalization/metric helpers, package __init__ files, dependency lock and pyproject. Include per-file SHA256 and a canonical aggregate. Tests get a separate code/test inventory. No runtime use of unbound code.",
+    "file_reading": "Resolve explicit IDs under canonical allowlisted roots. Reject leaf/directory symlinks, traversal, unexpected files, duplicate JSON keys, unknown schema fields. Hash and parse the same captured bytes. Do not scan arbitrary payloads to claim locked-data absence.",
+    "freeze_prerequisite": "Unknown additional runtime metadata must be inspected and recorded before M4, never guessed. It is operational metadata, not a choice of training recipe.",
+    "input_resolution": "Every descriptor-only entry is resolved through its named accepted parent manifest before M4. Add actual file SHA256 and size to T05 manifest; no null, wildcard, latest, glob, or unavailable required descriptor in a review-ready freeze.",
+    "local_path_map_contract": {
+      "artifacts": "Map every bound input artifact ID to {root, relative_path}. Resolve accepted archive members into an explicitly checked extraction root, not ad hoc traversal.",
+      "mps_owner_lock": "{root, relative_path} resolving to the project-wide haetae-mps lock shared with other worktracks. Bind the private path-map file digest and resolved lock-path digest in the run authorization metadata; no alternate lock argument.",
+      "output_root": "Root ID reserved for new T05 outputs only; never a source/checkpoint reference root.",
+      "reproduction": "Private review archive includes an archive-relative map. Relocation adapters may change local resolution only, while verifying every original artifact descriptor; they must be disclosed and never suppress scientific identity checks.",
+      "required_top_level_fields": [
+        "schema_version",
+        "roots",
+        "artifacts",
+        "output_root",
+        "mps_owner_lock"
+      ],
+      "roots": "Map of root ID to {path, allow_prefixes}. Paths are private absolute paths; prefixes are explicit relative paths, never empty or dot.",
+      "schema_version": 1
+    },
+    "path_mapping": "Private local path map is separate from scientific protocol. Protocol binds file contents and artifact IDs; no private absolute paths in public spec/results. Package includes a relative archive-location map for exact reproduction.",
+    "pointer_size": 128,
+    "registry_canonical_sha256": "943c9510769dfc184ff43a8c1883e53a5d7347ca0de975b7d2e32eafc0af2774",
+    "runtime": {
+      "attention_implementation": "eager",
+      "device": "mps",
+      "hardware": {
+        "chip": "Apple M3 Pro",
+        "memory_gib": 36,
+        "model_identifier": "Mac15,7"
+      },
+      "parameter_dtype": "float32",
+      "software": {
+        "macos": "26.6.2",
+        "numpy": "2.5.3",
+        "pyarrow": "25.0.1",
+        "python": "3.13.2",
+        "scikit_learn": "1.9.1",
+        "scipy": "1.18.1",
+        "torch": "2.14.0",
+        "transformers": "5.17.0"
+      }
+    },
+    "source_generation_step": 3894
+  },
+  "initialization": {
+    "allowed_after": "Exact M4 PAIRED REPLAY START with matching review commit/protocol/manifest",
+    "construction": "Use the unchanged shared model class/packing and local pinned loader in eager mode; copy G79 backbone and head state strictly. No separate original-pretrained feature model. Do not alter embeddings/tokenizer or choose architecture defaults from current libraries. Abort any config fingerprint/shape/dtype mismatch.",
+    "pair_gate": "Initialize control then targeted for a seed, in sequential MPS ownership. Each runs196 original controls/98 forwards (no full zero-update reevaluation); require existing raw/logprob/TV/P99/action parity thresholds and exact tensor equality. Publish initial-pair.json only after both receipts/checkpoint pins validate. Training cannot start until this gate passes.",
+    "pair_order": "Both arm initializations and initial-pair validation must complete before either arm executes update 1. Every real initialization or parity operation requires M4 START.",
+    "parity": {
+      "allowed_material_action_changes": 0,
+      "material_margin": 0.0002,
+      "max_logprob_error": 0.001,
+      "max_tv": 0.0001,
+      "near_ties": "report all; never filter keys",
+      "nearest_rank_p99_index_196": 194,
+      "p99_tv": 1e-05,
+      "raw_atol": 0.0001,
+      "raw_rtol": 1e-05,
+      "temperatures": [
+        1.0,
+        1.5197255188671874
+      ]
+    },
+    "parity_state_preservation": "Run the 196 controls in eval/inference mode after saving the step-zero checkpoint. Verify tensor identity again afterward. Restore the captured fresh RNG state and training mode; never allow parity evaluation to become the source of training randomness.",
+    "reset": "Construct fresh ordered optimizer and scheduler. Reset Python/TorchCPU/MPS seeds after model and optimizer construction, before checkpoint capture; no source RNG or source moments applied. Set model.train(), all intended parameters trainable, allgrad=None. Original gradient-checkpointing setting remains false.",
+    "source_validation": "Require descriptor SHA256/size, registered run/spec IDs, completed generation79 step3894, source config/tokenizer/code identities before deserialization. Trusted load_completed_checkpoint may deserialize the old payload but only backbone/head weights and architecture metadata may be applied. Never call restore_checkpoint on generation79.",
+    "step_zero": "Publish new v3 running step0 checkpoint and pin it; empty optimizer.state; scheduler last_epoch0,_step_count1, LR0; tape cursor0; skipped0. Publish immutable initialization receipt with source descriptor, per-tensor identities, group signature, reset assertions, new UUID, and fresh RNG digests. New runID must differ fromG79 and every sibling.",
+    "tensor_proof": "Hash every named backbone/head state tensor including buffers: metadata(name,shape,dtype), plus little-endian contiguous CPU bytes in sorted-name order. Copy MPS tensors to CPU without dtype conversion first. Require source==loaded CPU==MPS roundtrip identities, per tensor and aggregate. Require source/checkpoint finitefloat32 learned tensors and exact bound shapes; compare persistent integer/bool buffers without coercion."
+  },
+  "m4_package": {
+    "checkpoint_limit": "Do not include real checkpoint weights. Bind the G79 file hash, size and run/spec metadata, and explicitly label tensor verification deferred until post-M4 initialization.",
+    "contents": {
+      "M4_REVIEW.md": "Producer commit; exact archive, index, specification, protocol and manifest hashes; commands; all counts and pre-M4 zero-activity evidence.",
+      "checks/": "CPU synthetic test, identity, deterministic tape, independent loss/schedule/bootstrap/gate, lint and compile reports.",
+      "evidence/comparison/": "Exact comparison plan, cached baseline/shared reports and accepted comparison.",
+      "evidence/korean/": "Registered manifest and public development JSONL only.",
+      "evidence/mps-copy/": "Exact accepted tensor-only diagnostic JSON; do not rerun it.",
+      "evidence/registry.json": "Unmodified accepted registry.",
+      "evidence/shared/": "Exact registered G79 run/manifest metadata and shared suite manifest/train/calibration/development/rendered-state audit. No checkpoint blob.",
+      "evidence/t04/": "Original seven plan files plus accepted corrected amendment manifests, result, parity and semantic observations. Include the accepted measured archive if it is a required root binding.",
+      "evidence/transfer/": "Registered manifest and public development JSONL only.",
+      "freeze/": "Manifest plus the exact frozen_manifest_files inventory, with no extra files.",
+      "maps/archive-map.json": "Relative map for every included artifact. Preserve original file identities; distinguish absent weight bytes from included evidence.",
+      "model-metadata/": "Pinned tokenizer/configuration JSON plus descriptor-only G79 checkpoint binding. No model weight, optimizer or RNG payload.",
+      "review-index.json": "Exact member allowlist excluding itself, member SHA256/size, producer/spec/protocol/manifest identities, own canonical self-digest.",
+      "source/": "All exact bound new and historical source dependencies, tests, pyproject and lockfile, with Git blob identities.",
+      "specification/artifact-schemas.json": "Complete strict artifact schemas and semantic invariants.",
+      "specification/implementation-spec.json": "This self-digested implementation specification."
+    },
+    "filename": "haetae-t05-paired-replay-v1-prerun.zip",
+    "freeze_repeatability": "Freeze twice to fresh directories from the same committed source. Every scientific payload must be byte-identical. Keep timestamps and private absolute paths out of scientific identities. Package only after all pre-M4 checks pass.",
+    "start_meaning": "M4 START conditionally authorizes the exact seed-17 pair initialization, initial parity, training and endpoint evaluation. Seed 23 remains blocked until the independently replayed point gate passes. No recipe change is authorized.",
+    "terminal_decisions": [
+      "M4 PAIRED REPLAY START",
+      "M4 PAIRED REPLAY HOLD"
+    ],
+    "visibility": "Private exact review only. Public-source row text is included solely to reproduce membership; do not publish the package or quote tweet/review text."
+  },
+  "prohibited_actions": [
+    "Open, download, parse or enumerate locked test payloads.",
+    "Load real weights or execute MPS before M4.",
+    "Call optimizer.step before M4, including historical toy-update tests.",
+    "Mutate or relabel generation 79.",
+    "Inherit generation-79 optimizer, scheduler or random state.",
+    "Change architecture, loss, precision, context policy, microbatch, optimizer groups or schedule.",
+    "Train on development, calibration, frozen semantic perturbations or augmented none-of-these development cases.",
+    "Train on Jev or Laya outputs.",
+    "Choose prompts, thresholds, temperatures, epochs, seeds or hyperparameters using development outcomes.",
+    "Silently reject/resample requests, retry failed runs or roll back checkpoints.",
+    "Rewrite historical qualified, held or amended evidence.",
+    "Repeat T04 feature extraction or the six-process benchmark.",
+    "Run concurrent MPS owners.",
+    "Publish raw rows, private paths or training checkpoint/optimizer/RNG payloads.",
+    "Authorize seed 23 from an unchecked Boolean or a secondary result.",
+    "Promote new weights or claim rights clearance from these results."
+  ],
+  "repository": "pumpkinredbean/haetae",
+  "required_tests": [
+    {
+      "acceptance": "Changing input bytes, sizes, self-digests, code hashes or required bindings is rejected; no required artifact becomes optional.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T01",
+      "name": "inputs_exact"
+    },
+    {
+      "acceptance": "Reject traversal, absolute archive members, symlinks, duplicate JSON keys, extra fields and Boolean integer aliases before reading an outside sentinel.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T02",
+      "name": "file_boundary"
+    },
+    {
+      "acceptance": "Atomic replacement between hashing and parsing cannot combine the digest of one snapshot with the semantics of another.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T03",
+      "name": "single_snapshot"
+    },
+    {
+      "acceptance": "Inject overlap with development, calibration or G79 training, a duplicate support state, a permuted-Choice label conflict or a non-train split. Freeze fails without reselection.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T04",
+      "name": "support_leakage"
+    },
+    {
+      "acceptance": "Emotion support has exactly six native labels. Offensive true is option 0. No augmented none-of-these target is admitted to training.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T05",
+      "name": "native_ontology"
+    },
+    {
+      "acceptance": "Reject negative/Boolean/out-of-range labels, candidate mismatch, invalid soft distributions, empty requests and duplicate question IDs.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T06",
+      "name": "question_targets"
+    },
+    {
+      "acceptance": "Reordering source traversal preserves normalized scientific identities, tapes, membership hashes and exposure coefficients.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T07",
+      "name": "source_order_independence"
+    },
+    {
+      "acceptance": "All 512 updates have identical first-six UIDs, permutations, encoding hashes and stochastic seeds across arms. Remaining slots obey the declared streams.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T08",
+      "name": "tape_pair_alignment"
+    },
+    {
+      "acceptance": "Regenerate and reject rehashed tape substitutions involving arm, seed, step, parent, permutation, target or prefix digest.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T09",
+      "name": "tape_regeneration"
+    },
+    {
+      "acceptance": "Offensive draws are 256 per class; emotion is 85 or 86 per class according to the frozen class order. No support parent repeats within one seed.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T10",
+      "name": "target_balance"
+    },
+    {
+      "acceptance": "Fourth-microbatch shape changes cannot alter the next update's common-request seeds or permutations.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T11",
+      "name": "draw_rng_isolation"
+    },
+    {
+      "acceptance": "An independent loss formula and CPU gradients match CE + 0.5 Brier + 0.25 Score RPS with request means and soft targets. Full-batch and microbatch gradients agree without optimizer.step.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T12",
+      "name": "loss_reference"
+    },
+    {
+      "acceptance": "An uneven synthetic 2+2+1 batch uses weights 2/5,2/5,1/5. Detect global question averaging and accidental double normalization. Production remains four pairs.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T13",
+      "name": "microbatch_coefficients"
+    },
+    {
+      "acceptance": "Reject duplicate, missing, reordered or foreign optimizer parameters, wrong decay and wrong learning rates; validate the exact three named groups.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T14",
+      "name": "optimizer_groups"
+    },
+    {
+      "acceptance": "Check all 513 schedule entries and sentinels against an independent formula. A spy verifies one clip, optimizer step and scheduler step per committed update.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T15",
+      "name": "scheduler_indexing"
+    },
+    {
+      "acceptance": "Poison a synthetic source's optimizer/RNG state. Initialization copies only weight tensors and constructs clean state; wrong names/shapes/dtypes or alias mutation fails.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T16",
+      "name": "initial_weight_only"
+    },
+    {
+      "acceptance": "Both step-zero identities must match every named source tensor, not only a convenient aggregate. No first update before both receipts and control parity pass.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T17",
+      "name": "stepzero_proof"
+    },
+    {
+      "acceptance": "Functional CPU reference and spy optimizer reproduce uninterrupted versus interrupted/resumed tape IDs, permutations, RNG draws, LRs and final synthetic state; no optimizer.step is called.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T18",
+      "name": "resume_equivalence"
+    },
+    {
+      "acceptance": "Reject malformed tiny checkpoint tensors, moments, counters, RNG, scheduler state, cursor, foreign seed/arm/protocol, and an inherited step 3894.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T19",
+      "name": "checkpoint_validation"
+    },
+    {
+      "acceptance": "Inject crashes around serialization, sync, manifest publication and pinning. Only a validated committed generation is authoritative; no incomplete artifact appears completed.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T20",
+      "name": "publication_crashes"
+    },
+    {
+      "acceptance": "An invalid current checkpoint never silently falls back to previous. Abrupt/failed receipts need review. A completed endpoint cannot train again.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T21",
+      "name": "resume_no_rollback"
+    },
+    {
+      "acceptance": "CPU subprocess signals at every update phase stop at the correct transaction boundary; handlers are restored and no partial cursor advance is accepted.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T22",
+      "name": "signal_boundaries"
+    },
+    {
+      "acceptance": "Two CPU processes contend for the same flock; the loser fails before the mocked accelerator loader. No alternate ownership path is accepted.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T23",
+      "name": "mps_owner"
+    },
+    {
+      "acceptance": "Inject OOM, memory-limit, nonfinite-gradient and disk failures; preserve failed evidence, no partial-state checkpoint, no silent configuration changes.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T24",
+      "name": "resource_failure"
+    },
+    {
+      "acceptance": "Observe detach, CPU copy, then widening. Nonfinite/malformed outputs remain explicit failure evidence. No fused copy is used.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T25",
+      "name": "output_transfer"
+    },
+    {
+      "acceptance": "Use exactly 196 step-zero controls. Zeroed or rehashed contradictory values fail raw/log-probability/TV/action gates at both temperatures.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T26",
+      "name": "zero_parity"
+    },
+    {
+      "acceptance": "Reject missing, duplicated, reordered or foreign prediction rows, mismatched semantic fields, invalid token counts, malformed secondary evidence, and inconsistent float32/float64 values.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T27",
+      "name": "evaluation_inventory"
+    },
+    {
+      "acceptance": "Independent metrics cover hard/soft labels, heterogeneous ontologies, RPS, confusion tables, AUROC ties/polarity and absent denominators. Huge common-offset logits retain log(2) NLL.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T28",
+      "name": "metrics_independent"
+    },
+    {
+      "acceptance": "Apply exactly the five frozen BoolQ exclusions. Other transfer has 568 questions; native emotion is 92, not 116. Score has 280 questions and four task sources.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T29",
+      "name": "common_clean"
+    },
+    {
+      "acceptance": "Exhaustive small-parent fixtures verify clustering, source namespaces, joint multi-task multiplicities, no rejected draws, singleton rejection and nearest-rank endpoints.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T30",
+      "name": "bootstrap"
+    },
+    {
+      "acceptance": "Probe every gate on either side of its boundary without rounding. Rehashed false pass flags, wrong temperatures and missing metrics fail independent replay.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T31",
+      "name": "gate_false_pass"
+    },
+    {
+      "acceptance": "Seed-23 initialization/training fails without the reviewed code and a replayed passing seed-17 gate. Swapped arms, intermediate checkpoints or secondary metrics cannot authorize it.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T32",
+      "name": "seed23_guard"
+    },
+    {
+      "acceptance": "Guard evaluation against classifier/calibrator fitting, threshold/prior adjustment, prompt mutation, epoch selection and teacher-output substitution.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T33",
+      "name": "no_fitting_or_selection"
+    },
+    {
+      "acceptance": "Wrong reviewed commit/protocol/manifest fails before any real loader, checkpoint deserializer or MPS API. An allow flag alone never authorizes execution.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T34",
+      "name": "review_gate"
+    },
+    {
+      "acceptance": "Unknown external exit code stays null. Attempted and completed counters are distinct. Shell status handling does not reuse zsh's read-only status variable.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T35",
+      "name": "receipt_truth"
+    },
+    {
+      "acceptance": "All historical source/artifact hashes remain unchanged. Reject writes over original evidence, path maps or existing completed outputs.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T36",
+      "name": "protected_history"
+    },
+    {
+      "acceptance": "Recompute a full synthetic paired result and gate through the final verifier. Tampered discrete values fail exactly; numerical replay tolerances are frozen and disclosed.",
+      "execution": "CPU-only synthetic/metadata; no real weights, no MPS, no optimizer.step",
+      "id": "T37",
+      "name": "result_replay"
+    }
+  ],
+  "resolutions": [
+    {
+      "basis": "user-fixed; existing v3 checkpoint identity",
+      "choice": "This is weight-initialized continuation, not resume of generation 79. Fresh run IDs, optimizer, scheduler, and RNG are mandatory.",
+      "id": "R01"
+    },
+    {
+      "basis": "accepted T04 population correction",
+      "choice": "Primary emotion is exactly the 92 native-six-class T04 keys; offensive is exactly its 80 binary keys. All 24 augmented emotion cases remain secondary.",
+      "id": "R02"
+    },
+    {
+      "basis": "resolves unspecified nonregression comparator while preserving the matched-intervention gate",
+      "choice": "All six pilot delta gates compare targeted step512 minus same-seed control step512. Generation79-relative changes are mandatory descriptive results, not extra undeclared vetoes.",
+      "id": "R03"
+    },
+    {
+      "basis": "latest user fixed-temperature requirement",
+      "choice": "Primary proper-score gates use the fixed temperature 1.5197255188671874. Raw temperature1 is separately reported and not an alternative success criterion.",
+      "id": "R04"
+    },
+    {
+      "basis": "resolves undefined Score aggregation without selecting after outcomes",
+      "choice": "Score retention is equal-task-source macro RPS over all common-clean Score questions: 240 decision plus40 transfer, four Score sources. Other-transfer excludes every emotion/offensive question, including augmented emotion.",
+      "id": "R05"
+    },
+    {
+      "basis": "actual accepted T04 exclusion scope",
+      "choice": "Consumed exclusion means the generation79 consumed original-training population for NEW target support. Original-training replay is intentionally consumed data. Do not claim exclusion of unknown backbone pretraining or all older baseline training.",
+      "id": "R06"
+    },
+    {
+      "basis": "fixed accepted support and 512 updates",
+      "choice": "Keep all 2048 T04 support-fit members exactly. Reject any newly discovered overlap/conflict rather than dropping a row or replenishing from calibration. Draw only512 per target per seed without replacement; no new support selection.",
+      "id": "R07"
+    },
+    {
+      "basis": "new explicit data schedule choice; no development-dependent weighting",
+      "choice": "Original replay is uniform over original requests, not rebalanced over sources or parents. Target draw streams are deterministic native-class-balanced round robins.",
+      "id": "R08"
+    },
+    {
+      "basis": "explicit matched-randomness control",
+      "choice": "Reset model stochastic RNG once per update with a seed depending on experiment seed and update, but not arm. This keeps common first-six requests aligned without letting a different fourth microbatch desynchronize later updates.",
+      "id": "R09"
+    },
+    {
+      "basis": "preserves existing scheduler semantics; no off-by-one reinterpretation",
+      "choice": "Use existing historical LambdaLR/HF cosine convention: step0 LR is zero, update1 uses zero LR but initializes Adam moments; after512 updates scheduler LR is zero. Count512 Adam/scheduler updates, not512 positive-LR updates.",
+      "id": "R10"
+    },
+    {
+      "basis": "minimal zero-update execution with existing accepted controls",
+      "choice": "Step-zero full scientific reference is cached G79, not a repeated full benchmark. Each newly initialized arm additionally runs exactly196 original controls/98 forwards after M4 to prove loader/output parity.",
+      "id": "R11"
+    },
+    {
+      "basis": "literal user no optimizer-update boundary; tests use spies rather than actual optimizer updates",
+      "choice": "Before M4, allow CPU autograd and functional scalar/array optimizer references plus optimizer-state construction/validation, but prohibit calling any optimizer.step, any pretrained loader, or any MPS API.",
+      "id": "R12"
+    },
+    {
+      "basis": "existing T06 point gate vs later replicated-candidate claim",
+      "choice": "Seed23 is allowed only by a verified passing seed17 point-gate artifact after exact-commit M4 authorization. Significance is reported at seed17 but is not an additional replication-launch gate.",
+      "id": "R13"
+    },
+    {
+      "basis": "accepted T04 decision and user no prompt changes",
+      "choice": "The fixed native target training wording is original wording, not the better-performing T04 lexicon. Do not train on lexicon, aliases, augmented none-of-these, or rotated development examples.",
+      "id": "R14"
+    }
+  ],
+  "review_claim_limits": [
+    "This specifies implementation; it does not claim that new T05 code or tests already exist.",
+    "Only historical code, accepted metadata and specification invariants were inspected in this turn.",
+    "Required child file descriptors must be materialized from accepted manifests before M4.",
+    "The study remains exploratory public-development research.",
+    "Actual partial or recovered work must be counted separately from configured logical budgets."
+  ],
+  "schema_version": 1,
+  "scope": {
+    "classification": "exploratory public-development intervention",
+    "hypothesis": "Replacing two of eight continuation requests with new training-only emotion/offensive supervision repairs the original native decision contract relative to matched continuation without changing architecture or objective.",
+    "not_claimed": [
+      "causal architecture or RLCD benefit",
+      "general calibration",
+      "production readiness",
+      "zero-shot transfer after target supervision",
+      "untouched confirmatory evaluation",
+      "automatic checkpoint promotion"
+    ],
+    "pre_m4": "Implement, freeze metadata/tokenization/tapes/cached metrics, CPU-only synthetic tests; no real model load, MPS, optimizer.step, or locked data."
+  },
+  "source_reuse": {
+    "checkpoint": [
+      "haetae.checkpoint.CheckpointStore",
+      "haetae.checkpoint.RunDirectoryLock",
+      "haetae.checkpoint.make_run_spec",
+      "haetae.checkpoint.checkpoint_payload",
+      "haetae.checkpoint.validate_checkpoint",
+      "haetae.checkpoint.restore_checkpoint",
+      "haetae.checkpoint.optimizer_signature"
+    ],
+    "do_not_call": [
+      "haetae.train.train",
+      "haetae.train.batch_loss for request training",
+      "experiments.train_shared.train",
+      "experiments.freeze_shared_suite.freeze",
+      "experiments.freeze_shared_suite.reconstruct_partitions",
+      "any LOADERS[name]",
+      "any calibration fitting function during T05 evaluation",
+      "original T04 runner"
+    ],
+    "optimizer": "experiments.train_shared.build_optimizer",
+    "packing": [
+      "experiments.kev_adapter.normalize_request",
+      "experiments.shared_state.encode_request",
+      "experiments.shared_state.load_shared_state_model"
+    ],
+    "training_objective": [
+      "experiments.train_shared.question_loss",
+      "experiments.train_shared.request_batch_loss"
+    ]
+  },
+  "sources": [
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "RESEARCH_STATE.md",
+      "role": "accepted T04 and next T05 decision"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "plans/next-v1/CHECKLIST.md",
+      "role": "fixedT05/T06recipe,gates,replication"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "plans/next-v1/implementation-plan.json",
+      "role": "versionedworktrack/milestones"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "experiments/train_shared.py",
+      "role": "requestmeanloss,parameter grouping,signals,microbatchtraining"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "src/haetae/train.py",
+      "role": "historicalquestionmean baseline andfingerprints; notT05objective"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "src/haetae/checkpoint.py",
+      "role": "v3publication,scheduler/Adam/RNGvalidation,logicaldata_statecompatibility"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "experiments/comparison_protocol.py",
+      "role": "common-cleanpopulationsemantics"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "experiments/evaluate_shared.py",
+      "role": "soft-targetmetrics,ScoreRPS,fixed-temperatureinference"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "experiments/compare_development.py",
+      "role": "wholeparentincidence-stratifiedbootstrap"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "experiments/freeze_shared_suite.py",
+      "role": "training/calibrationsourceprovenance; nofreshloaderexecution"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "tests/test_shared_training.py",
+      "role": "existingrequestloss/permutationfixtures"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "tests/test_resume.py",
+      "role": "existingcheckpointstate/accumulation/resumefixturepatterns"
+    },
+    {
+      "commit": "9c4e0e8227f0f3299472a1b195cbbe98280491dc",
+      "path": "research/evidence/index.json",
+      "role": "boundhistoricalevidencefileidentities"
+    }
+  ],
+  "spec_sha256": "a414f002e2b742c94c34f08ef22de4d04ee6cf8ad2b28e237371481272fe2354",
+  "specification_id": "haetae-t05-paired-replay-v1",
+  "status": "implementation_specification_not_execution_authorization",
+  "tapes": {
+    "arms": {
+      "control": "slots0..7 of original stream",
+      "targeted": "original slots0..5, then emotion support_stream[u], then offensive support_stream[u]"
+    },
+    "canonical_hash": "H(x)=SHA256(UTF8 json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(comma,colon),allow_nan=False))",
+    "chain_definition": {
+      "committed_prefix": "H([row_sha256 for tape rows with update_index < completed_step]); at step zero use H([]).",
+      "encoding_digest": "H({input_ids, segments, position_ids, decision_indices, option_indices, labels, state_tokens, retained_state_tokens}) using the exact PackedRequest values after the stored permutation.",
+      "first_previous_row_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "model_seed_range": "[0, 2**63-2]; compute big-endian integer from the first 16 hexadecimal digest characters, modulo 2**63-1.",
+      "row_digest": "Digest the canonical tape row excluding only row_sha256. Each following previous_row_sha256 equals its predecessor row_sha256."
+    },
+    "choice_permutation": "For every occurrence, instantiate random.Random(int(H([t05-choice-v1,s,u,slot,request_uid]),16)). Iterate questions in their frozen request order; shuffle range(K) only for Choice. Store new_to_old vector per question. Apply identical vector to options,keys,soft; label becomes perm.index(old_label). Score and Noul store identity vectors. First-six seeds/requests/permutations/digests identical across arms.",
+    "counts": {
+      "common_original_draws_per_seed": 3072,
+      "control_only_original_draws_per_seed": 1024,
+      "per_arm_request_draws": 4096,
+      "target_emotion_draws_per_seed": 512,
+      "target_offensive_draws_per_seed": 512
+    },
+    "execution_randomness": "Before each full update u, seed Python, Torch CPU and Torch MPS with int(H([t05-model-rng-v1,s,u])[:16],16) mod(2**63-1), independent of arm. Never reset between its four microbatches. Set no NumPy RNG in training (none used). Record seed in both tape rows; save actual RNG state at committed checkpoint. Restore before validating resume, then apply the next frozen update seed.",
+    "exposure_report": "Report actual question draws and sums of 1/(8*Q_request) by origin, task source, primitive, rubric, and semantic label. Apply no extra source/class weights.",
+    "files": [
+      "tape-s17-control.jsonl",
+      "tape-s17-targeted.jsonl",
+      "tape-s23-control.jsonl",
+      "tape-s23-targeted.jsonl"
+    ],
+    "original_stream": "For seed s, sort all15572 original request occurrences by (H([t05-original-v1,s,request_uid]),request_uid). Take first4096. Update u uses positions8u..8u+7. No replacement or epoch rollover.",
+    "row_contents": [
+      "zero-based update index",
+      "experiment seed",
+      "arm",
+      "model stochastic seed",
+      "eight occurrence IDs",
+      "eight request UIDs",
+      "eight origin/source-parent identities",
+      "per-question new_to_old permutations",
+      "permutation-applied request SHA256",
+      "packed-encoding SHA256 and token count for each occurrence",
+      "previous-row digest",
+      "row_sha256"
+    ],
+    "seeds": [
+      17,
+      23
+    ],
+    "slots_per_update": 8,
+    "support_stream": "For each target/seed, order native class labels by (H([t05-class-order-v1,s,target,label]),label). For each class, hash-order its256 support-fit rows by (H([t05-support-order-v1,s,target,label,parent_id,state_sha256]),parent_id). At draw u use class_order[u mod K] and member floor(u/K). Stop after512. No repeats within a seed. Emotion has two86-count and four85-count labels; offensive256 each. Hash order fixes which emotion labels receive86.",
+    "tie_break": "full canonical request UID; hash ties never depend on source file traversal order",
+    "uid": "H([origin_source,parent_id,request_id,normalized_request_sha256])",
+    "updates": 512,
+    "verification": "Regenerate each complete tape and hash chain. Require 512 rows and 4,096 slots per arm, exactly 3,072 common original slots, 1,024 control-only original slots, and 512 emotion plus 512 offensive target slots. Verify class quotas and every permutation/encoding digest."
+  },
+  "training": {
+    "brier_weight": 0.5,
+    "effective_batch": 8,
+    "gradient_validation": "Every trainable parameter must have a finite gradient. A zero-valued gradient is allowed. No parameter freezing or unfreezing is introduced.",
+    "max_len": 2048,
+    "memory_limit_bytes": 12884901888,
+    "memory_rule": "Check driver_allocated_memory at load, after each microbatch/update, and after publication. If limit exceeded or OOM occurs, preserve last committed checkpoint and failure evidence; no silent batch reduction. This is an operational stop, not a new scientific success metric.",
+    "microbatch": 2,
+    "no_survivor_weighting": "Every production update contains exactly eight valid requests. Rejection or truncation is fatal; skipped remains zero. Uneven CPU fixtures test the general weighting formula but do not change the production recipe.",
+    "objective": "(1/8) * sum_requests [(1/Q_request) * sum_questions {CE(target,p) + 0.5*sum_k((p_k-target_k)^2) + I[type=score]*0.25*mean_{j=0..K-2}((CDF_p_j-CDF_target_j)^2)}]",
+    "optimizer": {
+      "amsgrad": false,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "capturable": false,
+      "class": "torch.optim.AdamW",
+      "coverage": "exactly once for every trainable parameter; bind ordered name/shape/dtype signature and every AdamW setting.",
+      "differentiable": false,
+      "eps": 1e-08,
+      "foreach": null,
+      "fused": null,
+      "groups": [
+        {
+          "base_lr": 5e-06,
+          "name": "backbone_decay",
+          "selection": "requires_grad backbone params ndim>1 in existing parameter traversal order",
+          "weight_decay": 0.01
+        },
+        {
+          "base_lr": 5e-06,
+          "name": "backbone_no_decay",
+          "selection": "requires_grad backbone params ndim<=1 in existing order",
+          "weight_decay": 0.0
+        },
+        {
+          "base_lr": 5e-05,
+          "name": "head",
+          "selection": "all requires_grad pointer-head parameters in existing order",
+          "weight_decay": 0.0
+        }
+      ],
+      "maximize": false
+    },
+    "ordinal_weight": 0.25,
+    "precision": "float32 parameters and eager attention. No autocast, GradScaler, torch.compile, or gradient-checkpointing change.",
+    "scheduler": {
+      "class": "LambdaLR via pinned transformers.get_cosine_schedule_with_warmup",
+      "last_epoch_at_construction": -1,
+      "lr_table": "Freeze all513 factors and per-group LRs; compare every checkpoint/update against table.",
+      "lr_table_values": [
+        {
+          "completed_updates": 0,
+          "factor": 0.0
+        },
+        {
+          "completed_updates": 1,
+          "factor": 0.03333333333333333
+        },
+        {
+          "completed_updates": 2,
+          "factor": 0.06666666666666667
+        },
+        {
+          "completed_updates": 3,
+          "factor": 0.1
+        },
+        {
+          "completed_updates": 4,
+          "factor": 0.13333333333333333
+        },
+        {
+          "completed_updates": 5,
+          "factor": 0.16666666666666666
+        },
+        {
+          "completed_updates": 6,
+          "factor": 0.2
+        },
+        {
+          "completed_updates": 7,
+          "factor": 0.23333333333333334
+        },
+        {
+          "completed_updates": 8,
+          "factor": 0.26666666666666666
+        },
+        {
+          "completed_updates": 9,
+          "factor": 0.3
+        },
+        {
+          "completed_updates": 10,
+          "factor": 0.3333333333333333
+        },
+        {
+          "completed_updates": 11,
+          "factor": 0.36666666666666664
+        },
+        {
+          "completed_updates": 12,
+          "factor": 0.4
+        },
+        {
+          "completed_updates": 13,
+          "factor": 0.43333333333333335
+        },
+        {
+          "completed_updates": 14,
+          "factor": 0.4666666666666667
+        },
+        {
+          "completed_updates": 15,
+          "factor": 0.5
+        },
+        {
+          "completed_updates": 16,
+          "factor": 0.5333333333333333
+        },
+        {
+          "completed_updates": 17,
+          "factor": 0.5666666666666667
+        },
+        {
+          "completed_updates": 18,
+          "factor": 0.6
+        },
+        {
+          "completed_updates": 19,
+          "factor": 0.6333333333333333
+        },
+        {
+          "completed_updates": 20,
+          "factor": 0.6666666666666666
+        },
+        {
+          "completed_updates": 21,
+          "factor": 0.7
+        },
+        {
+          "completed_updates": 22,
+          "factor": 0.7333333333333333
+        },
+        {
+          "completed_updates": 23,
+          "factor": 0.7666666666666667
+        },
+        {
+          "completed_updates": 24,
+          "factor": 0.8
+        },
+        {
+          "completed_updates": 25,
+          "factor": 0.8333333333333334
+        },
+        {
+          "completed_updates": 26,
+          "factor": 0.8666666666666667
+        },
+        {
+          "completed_updates": 27,
+          "factor": 0.9
+        },
+        {
+          "completed_updates": 28,
+          "factor": 0.9333333333333333
+        },
+        {
+          "completed_updates": 29,
+          "factor": 0.9666666666666667
+        },
+        {
+          "completed_updates": 30,
+          "factor": 1.0
+        },
+        {
+          "completed_updates": 31,
+          "factor": 0.9999893795201302
+        },
+        {
+          "completed_updates": 32,
+          "factor": 0.9999575185316993
+        },
+        {
+          "completed_updates": 33,
+          "factor": 0.9999044183882233
+        },
+        {
+          "completed_updates": 34,
+          "factor": 0.9998300813454981
+        },
+        {
+          "completed_updates": 35,
+          "factor": 0.9997345105615041
+        },
+        {
+          "completed_updates": 36,
+          "factor": 0.9996177100962713
+        },
+        {
+          "completed_updates": 37,
+          "factor": 0.9994796849117081
+        },
+        {
+          "completed_updates": 38,
+          "factor": 0.999320440871389
+        },
+        {
+          "completed_updates": 39,
+          "factor": 0.9991399847403066
+        },
+        {
+          "completed_updates": 40,
+          "factor": 0.9989383241845838
+        },
+        {
+          "completed_updates": 41,
+          "factor": 0.9987154677711481
+        },
+        {
+          "completed_updates": 42,
+          "factor": 0.9984714249673674
+        },
+        {
+          "completed_updates": 43,
+          "factor": 0.9982062061406487
+        },
+        {
+          "completed_updates": 44,
+          "factor": 0.9979198225579968
+        },
+        {
+          "completed_updates": 45,
+          "factor": 0.9976122863855361
+        },
+        {
+          "completed_updates": 46,
+          "factor": 0.9972836106879934
+        },
+        {
+          "completed_updates": 47,
+          "factor": 0.9969338094281431
+        },
+        {
+          "completed_updates": 48,
+          "factor": 0.9965628974662144
+        },
+        {
+          "completed_updates": 49,
+          "factor": 0.9961708905592592
+        },
+        {
+          "completed_updates": 50,
+          "factor": 0.9957578053604836
+        },
+        {
+          "completed_updates": 51,
+          "factor": 0.9953236594185395
+        },
+        {
+          "completed_updates": 52,
+          "factor": 0.9948684711767799
+        },
+        {
+          "completed_updates": 53,
+          "factor": 0.9943922599724752
+        },
+        {
+          "completed_updates": 54,
+          "factor": 0.9938950460359912
+        },
+        {
+          "completed_updates": 55,
+          "factor": 0.9933768504899304
+        },
+        {
+          "completed_updates": 56,
+          "factor": 0.9928376953482343
+        },
+        {
+          "completed_updates": 57,
+          "factor": 0.9922776035152483
+        },
+        {
+          "completed_updates": 58,
+          "factor": 0.9916965987847484
+        },
+        {
+          "completed_updates": 59,
+          "factor": 0.9910947058389308
+        },
+        {
+          "completed_updates": 60,
+          "factor": 0.9904719502473633
+        },
+        {
+          "completed_updates": 61,
+          "factor": 0.9898283584658987
+        },
+        {
+          "completed_updates": 62,
+          "factor": 0.9891639578355511
+        },
+        {
+          "completed_updates": 63,
+          "factor": 0.9884787765813348
+        },
+        {
+          "completed_updates": 64,
+          "factor": 0.9877728438110644
+        },
+        {
+          "completed_updates": 65,
+          "factor": 0.9870461895141194
+        },
+        {
+          "completed_updates": 66,
+          "factor": 0.9862988445601688
+        },
+        {
+          "completed_updates": 67,
+          "factor": 0.9855308406978609
+        },
+        {
+          "completed_updates": 68,
+          "factor": 0.9847422105534738
+        },
+        {
+          "completed_updates": 69,
+          "factor": 0.98393298762953
+        },
+        {
+          "completed_updates": 70,
+          "factor": 0.9831032063033726
+        },
+        {
+          "completed_updates": 71,
+          "factor": 0.9822529018257048
+        },
+        {
+          "completed_updates": 72,
+          "factor": 0.9813821103190932
+        },
+        {
+          "completed_updates": 73,
+          "factor": 0.9804908687764324
+        },
+        {
+          "completed_updates": 74,
+          "factor": 0.9795792150593738
+        },
+        {
+          "completed_updates": 75,
+          "factor": 0.9786471878967173
+        },
+        {
+          "completed_updates": 76,
+          "factor": 0.9776948268827658
+        },
+        {
+          "completed_updates": 77,
+          "factor": 0.976722172475643
+        },
+        {
+          "completed_updates": 78,
+          "factor": 0.9757292659955754
+        },
+        {
+          "completed_updates": 79,
+          "factor": 0.9747161496231358
+        },
+        {
+          "completed_updates": 80,
+          "factor": 0.9736828663974526
+        },
+        {
+          "completed_updates": 81,
+          "factor": 0.9726294602143806
+        },
+        {
+          "completed_updates": 82,
+          "factor": 0.9715559758246363
+        },
+        {
+          "completed_updates": 83,
+          "factor": 0.9704624588318972
+        },
+        {
+          "completed_updates": 84,
+          "factor": 0.9693489556908641
+        },
+        {
+          "completed_updates": 85,
+          "factor": 0.9682155137052878
+        },
+        {
+          "completed_updates": 86,
+          "factor": 0.9670621810259594
+        },
+        {
+          "completed_updates": 87,
+          "factor": 0.9658890066486651
+        },
+        {
+          "completed_updates": 88,
+          "factor": 0.9646960404121041
+        },
+        {
+          "completed_updates": 89,
+          "factor": 0.9634833329957722
+        },
+        {
+          "completed_updates": 90,
+          "factor": 0.962250935917808
+        },
+        {
+          "completed_updates": 91,
+          "factor": 0.9609989015328051
+        },
+        {
+          "completed_updates": 92,
+          "factor": 0.9597272830295874
+        },
+        {
+          "completed_updates": 93,
+          "factor": 0.9584361344289498
+        },
+        {
+          "completed_updates": 94,
+          "factor": 0.9571255105813631
+        },
+        {
+          "completed_updates": 95,
+          "factor": 0.955795467164644
+        },
+        {
+          "completed_updates": 96,
+          "factor": 0.9544460606815901
+        },
+        {
+          "completed_updates": 97,
+          "factor": 0.9530773484575785
+        },
+        {
+          "completed_updates": 98,
+          "factor": 0.9516893886381322
+        },
+        {
+          "completed_updates": 99,
+          "factor": 0.9502822401864481
+        },
+        {
+          "completed_updates": 100,
+          "factor": 0.9488559628808938
+        },
+        {
+          "completed_updates": 101,
+          "factor": 0.9474106173124666
+        },
+        {
+          "completed_updates": 102,
+          "factor": 0.9459462648822207
+        },
+        {
+          "completed_updates": 103,
+          "factor": 0.9444629677986581
+        },
+        {
+          "completed_updates": 104,
+          "factor": 0.9429607890750862
+        },
+        {
+          "completed_updates": 105,
+          "factor": 0.9414397925269402
+        },
+        {
+          "completed_updates": 106,
+          "factor": 0.9399000427690735
+        },
+        {
+          "completed_updates": 107,
+          "factor": 0.9383416052130109
+        },
+        {
+          "completed_updates": 108,
+          "factor": 0.9367645460641715
+        },
+        {
+          "completed_updates": 109,
+          "factor": 0.9351689323190548
+        },
+        {
+          "completed_updates": 110,
+          "factor": 0.9335548317623956
+        },
+        {
+          "completed_updates": 111,
+          "factor": 0.9319223129642838
+        },
+        {
+          "completed_updates": 112,
+          "factor": 0.9302714452772515
+        },
+        {
+          "completed_updates": 113,
+          "factor": 0.9286022988333267
+        },
+        {
+          "completed_updates": 114,
+          "factor": 0.9269149445410545
+        },
+        {
+          "completed_updates": 115,
+          "factor": 0.9252094540824838
+        },
+        {
+          "completed_updates": 116,
+          "factor": 0.9234858999101232
+        },
+        {
+          "completed_updates": 117,
+          "factor": 0.921744355243862
+        },
+        {
+          "completed_updates": 118,
+          "factor": 0.9199848940678605
+        },
+        {
+          "completed_updates": 119,
+          "factor": 0.918207591127407
+        },
+        {
+          "completed_updates": 120,
+          "factor": 0.9164125219257417
+        },
+        {
+          "completed_updates": 121,
+          "factor": 0.91459976272085
+        },
+        {
+          "completed_updates": 122,
+          "factor": 0.9127693905222223
+        },
+        {
+          "completed_updates": 123,
+          "factor": 0.9109214830875829
+        },
+        {
+          "completed_updates": 124,
+          "factor": 0.9090561189195869
+        },
+        {
+          "completed_updates": 125,
+          "factor": 0.9071733772624846
+        },
+        {
+          "completed_updates": 126,
+          "factor": 0.9052733380987554
+        },
+        {
+          "completed_updates": 127,
+          "factor": 0.9033560821457103
+        },
+        {
+          "completed_updates": 128,
+          "factor": 0.9014216908520619
+        },
+        {
+          "completed_updates": 129,
+          "factor": 0.8994702463944656
+        },
+        {
+          "completed_updates": 130,
+          "factor": 0.8975018316740278
+        },
+        {
+          "completed_updates": 131,
+          "factor": 0.8955165303127841
+        },
+        {
+          "completed_updates": 132,
+          "factor": 0.8935144266501469
+        },
+        {
+          "completed_updates": 133,
+          "factor": 0.8914956057393231
+        },
+        {
+          "completed_updates": 134,
+          "factor": 0.8894601533436998
+        },
+        {
+          "completed_updates": 135,
+          "factor": 0.8874081559332019
+        },
+        {
+          "completed_updates": 136,
+          "factor": 0.8853397006806182
+        },
+        {
+          "completed_updates": 137,
+          "factor": 0.883254875457898
+        },
+        {
+          "completed_updates": 138,
+          "factor": 0.8811537688324188
+        },
+        {
+          "completed_updates": 139,
+          "factor": 0.8790364700632229
+        },
+        {
+          "completed_updates": 140,
+          "factor": 0.8769030690972262
+        },
+        {
+          "completed_updates": 141,
+          "factor": 0.8747536565653966
+        },
+        {
+          "completed_updates": 142,
+          "factor": 0.8725883237789045
+        },
+        {
+          "completed_updates": 143,
+          "factor": 0.8704071627252428
+        },
+        {
+          "completed_updates": 144,
+          "factor": 0.8682102660643196
+        },
+        {
+          "completed_updates": 145,
+          "factor": 0.8659977271245223
+        },
+        {
+          "completed_updates": 146,
+          "factor": 0.8637696398987516
+        },
+        {
+          "completed_updates": 147,
+          "factor": 0.86152609904043
+        },
+        {
+          "completed_updates": 148,
+          "factor": 0.8592671998594793
+        },
+        {
+          "completed_updates": 149,
+          "factor": 0.8569930383182729
+        },
+        {
+          "completed_updates": 150,
+          "factor": 0.8547037110275579
+        },
+        {
+          "completed_updates": 151,
+          "factor": 0.8523993152423521
+        },
+        {
+          "completed_updates": 152,
+          "factor": 0.8500799488578119
+        },
+        {
+          "completed_updates": 153,
+          "factor": 0.8477457104050731
+        },
+        {
+          "completed_updates": 154,
+          "factor": 0.8453966990470656
+        },
+        {
+          "completed_updates": 155,
+          "factor": 0.843033014574301
+        },
+        {
+          "completed_updates": 156,
+          "factor": 0.8406547574006324
+        },
+        {
+          "completed_updates": 157,
+          "factor": 0.83826202855899
+        },
+        {
+          "completed_updates": 158,
+          "factor": 0.8358549296970875
+        },
+        {
+          "completed_updates": 159,
+          "factor": 0.833433563073105
+        },
+        {
+          "completed_updates": 160,
+          "factor": 0.8309980315513443
+        },
+        {
+          "completed_updates": 161,
+          "factor": 0.8285484385978596
+        },
+        {
+          "completed_updates": 162,
+          "factor": 0.8260848882760616
+        },
+        {
+          "completed_updates": 163,
+          "factor": 0.8236074852422963
+        },
+        {
+          "completed_updates": 164,
+          "factor": 0.8211163347414003
+        },
+        {
+          "completed_updates": 165,
+          "factor": 0.8186115426022285
+        },
+        {
+          "completed_updates": 166,
+          "factor": 0.8160932152331586
+        },
+        {
+          "completed_updates": 167,
+          "factor": 0.8135614596175713
+        },
+        {
+          "completed_updates": 168,
+          "factor": 0.8110163833093049
+        },
+        {
+          "completed_updates": 169,
+          "factor": 0.8084580944280861
+        },
+        {
+          "completed_updates": 170,
+          "factor": 0.8058867016549373
+        },
+        {
+          "completed_updates": 171,
+          "factor": 0.8033023142275588
+        },
+        {
+          "completed_updates": 172,
+          "factor": 0.8007050419356898
+        },
+        {
+          "completed_updates": 173,
+          "factor": 0.7980949951164422
+        },
+        {
+          "completed_updates": 174,
+          "factor": 0.795472284649615
+        },
+        {
+          "completed_updates": 175,
+          "factor": 0.792837021952983
+        },
+        {
+          "completed_updates": 176,
+          "factor": 0.790189318977564
+        },
+        {
+          "completed_updates": 177,
+          "factor": 0.7875292882028624
+        },
+        {
+          "completed_updates": 178,
+          "factor": 0.7848570426320917
+        },
+        {
+          "completed_updates": 179,
+          "factor": 0.7821726957873727
+        },
+        {
+          "completed_updates": 180,
+          "factor": 0.7794763617049123
+        },
+        {
+          "completed_updates": 181,
+          "factor": 0.7767681549301575
+        },
+        {
+          "completed_updates": 182,
+          "factor": 0.7740481905129307
+        },
+        {
+          "completed_updates": 183,
+          "factor": 0.7713165840025411
+        },
+        {
+          "completed_updates": 184,
+          "factor": 0.7685734514428766
+        },
+        {
+          "completed_updates": 185,
+          "factor": 0.7658189093674737
+        },
+        {
+          "completed_updates": 186,
+          "factor": 0.7630530747945672
+        },
+        {
+          "completed_updates": 187,
+          "factor": 0.7602760652221183
+        },
+        {
+          "completed_updates": 188,
+          "factor": 0.7574879986228245
+        },
+        {
+          "completed_updates": 189,
+          "factor": 0.7546889934391064
+        },
+        {
+          "completed_updates": 190,
+          "factor": 0.7518791685780768
+        },
+        {
+          "completed_updates": 191,
+          "factor": 0.7490586434064893
+        },
+        {
+          "completed_updates": 192,
+          "factor": 0.7462275377456671
+        },
+        {
+          "completed_updates": 193,
+          "factor": 0.7433859718664126
+        },
+        {
+          "completed_updates": 194,
+          "factor": 0.7405340664838993
+        },
+        {
+          "completed_updates": 195,
+          "factor": 0.7376719427525416
+        },
+        {
+          "completed_updates": 196,
+          "factor": 0.7347997222608492
+        },
+        {
+          "completed_updates": 197,
+          "factor": 0.7319175270262623
+        },
+        {
+          "completed_updates": 198,
+          "factor": 0.7290254794899663
+        },
+        {
+          "completed_updates": 199,
+          "factor": 0.7261237025116921
+        },
+        {
+          "completed_updates": 200,
+          "factor": 0.7232123193644956
+        },
+        {
+          "completed_updates": 201,
+          "factor": 0.7202914537295211
+        },
+        {
+          "completed_updates": 202,
+          "factor": 0.7173612296907472
+        },
+        {
+          "completed_updates": 203,
+          "factor": 0.7144217717297159
+        },
+        {
+          "completed_updates": 204,
+          "factor": 0.7114732047202432
+        },
+        {
+          "completed_updates": 205,
+          "factor": 0.7085156539231159
+        },
+        {
+          "completed_updates": 206,
+          "factor": 0.7055492449807683
+        },
+        {
+          "completed_updates": 207,
+          "factor": 0.7025741039119465
+        },
+        {
+          "completed_updates": 208,
+          "factor": 0.699590357106354
+        },
+        {
+          "completed_updates": 209,
+          "factor": 0.6965981313192818
+        },
+        {
+          "completed_updates": 210,
+          "factor": 0.6935975536662253
+        },
+        {
+          "completed_updates": 211,
+          "factor": 0.6905887516174827
+        },
+        {
+          "completed_updates": 212,
+          "factor": 0.6875718529927404
+        },
+        {
+          "completed_updates": 213,
+          "factor": 0.6845469859556426
+        },
+        {
+          "completed_updates": 214,
+          "factor": 0.6815142790083473
+        },
+        {
+          "completed_updates": 215,
+          "factor": 0.6784738609860668
+        },
+        {
+          "completed_updates": 216,
+          "factor": 0.6754258610515949
+        },
+        {
+          "completed_updates": 217,
+          "factor": 0.6723704086898192
+        },
+        {
+          "completed_updates": 218,
+          "factor": 0.669307633702221
+        },
+        {
+          "completed_updates": 219,
+          "factor": 0.6662376662013608
+        },
+        {
+          "completed_updates": 220,
+          "factor": 0.6631606366053506
+        },
+        {
+          "completed_updates": 221,
+          "factor": 0.6600766756323139
+        },
+        {
+          "completed_updates": 222,
+          "factor": 0.6569859142948327
+        },
+        {
+          "completed_updates": 223,
+          "factor": 0.6538884838943809
+        },
+        {
+          "completed_updates": 224,
+          "factor": 0.6507845160157477
+        },
+        {
+          "completed_updates": 225,
+          "factor": 0.6476741425214464
+        },
+        {
+          "completed_updates": 226,
+          "factor": 0.6445574955461134
+        },
+        {
+          "completed_updates": 227,
+          "factor": 0.6414347074908944
+        },
+        {
+          "completed_updates": 228,
+          "factor": 0.6383059110178202
+        },
+        {
+          "completed_updates": 229,
+          "factor": 0.6351712390441708
+        },
+        {
+          "completed_updates": 230,
+          "factor": 0.6320308247368285
+        },
+        {
+          "completed_updates": 231,
+          "factor": 0.6288848015066211
+        },
+        {
+          "completed_updates": 232,
+          "factor": 0.6257333030026537
+        },
+        {
+          "completed_updates": 233,
+          "factor": 0.6225764631066325
+        },
+        {
+          "completed_updates": 234,
+          "factor": 0.6194144159271756
+        },
+        {
+          "completed_updates": 235,
+          "factor": 0.6162472957941166
+        },
+        {
+          "completed_updates": 236,
+          "factor": 0.6130752372527981
+        },
+        {
+          "completed_updates": 237,
+          "factor": 0.6098983750583555
+        },
+        {
+          "completed_updates": 238,
+          "factor": 0.6067168441699926
+        },
+        {
+          "completed_updates": 239,
+          "factor": 0.6035307797452488
+        },
+        {
+          "completed_updates": 240,
+          "factor": 0.6003403171342563
+        },
+        {
+          "completed_updates": 241,
+          "factor": 0.5971455918739909
+        },
+        {
+          "completed_updates": 242,
+          "factor": 0.5939467396825137
+        },
+        {
+          "completed_updates": 243,
+          "factor": 0.5907438964532059
+        },
+        {
+          "completed_updates": 244,
+          "factor": 0.5875371982489958
+        },
+        {
+          "completed_updates": 245,
+          "factor": 0.5843267812965782
+        },
+        {
+          "completed_updates": 246,
+          "factor": 0.5811127819806278
+        },
+        {
+          "completed_updates": 247,
+          "factor": 0.5778953368380045
+        },
+        {
+          "completed_updates": 248,
+          "factor": 0.5746745825519539
+        },
+        {
+          "completed_updates": 249,
+          "factor": 0.5714506559463
+        },
+        {
+          "completed_updates": 250,
+          "factor": 0.5682236939796336
+        },
+        {
+          "completed_updates": 251,
+          "factor": 0.5649938337394931
+        },
+        {
+          "completed_updates": 252,
+          "factor": 0.561761212436541
+        },
+        {
+          "completed_updates": 253,
+          "factor": 0.5585259673987352
+        },
+        {
+          "completed_updates": 254,
+          "factor": 0.5552882360654949
+        },
+        {
+          "completed_updates": 255,
+          "factor": 0.552048155981862
+        },
+        {
+          "completed_updates": 256,
+          "factor": 0.5488058647926577
+        },
+        {
+          "completed_updates": 257,
+          "factor": 0.5455615002366351
+        },
+        {
+          "completed_updates": 258,
+          "factor": 0.5423152001406282
+        },
+        {
+          "completed_updates": 259,
+          "factor": 0.539067102413696
+        },
+        {
+          "completed_updates": 260,
+          "factor": 0.5358173450412649
+        },
+        {
+          "completed_updates": 261,
+          "factor": 0.5325660660792657
+        },
+        {
+          "completed_updates": 262,
+          "factor": 0.5293134036482697
+        },
+        {
+          "completed_updates": 263,
+          "factor": 0.5260594959276202
+        },
+        {
+          "completed_updates": 264,
+          "factor": 0.5228044811495631
+        },
+        {
+          "completed_updates": 265,
+          "factor": 0.5195484975933741
+        },
+        {
+          "completed_updates": 266,
+          "factor": 0.5162916835794842
+        },
+        {
+          "completed_updates": 267,
+          "factor": 0.5130341774636045
+        },
+        {
+          "completed_updates": 268,
+          "factor": 0.5097761176308472
+        },
+        {
+          "completed_updates": 269,
+          "factor": 0.506517642489848
+        },
+        {
+          "completed_updates": 270,
+          "factor": 0.5032588904668852
+        },
+        {
+          "completed_updates": 271,
+          "factor": 0.5
+        },
+        {
+          "completed_updates": 272,
+          "factor": 0.4967411095331148
+        },
+        {
+          "completed_updates": 273,
+          "factor": 0.4934823575101521
+        },
+        {
+          "completed_updates": 274,
+          "factor": 0.4902238823691529
+        },
+        {
+          "completed_updates": 275,
+          "factor": 0.48696582253639564
+        },
+        {
+          "completed_updates": 276,
+          "factor": 0.48370831642051587
+        },
+        {
+          "completed_updates": 277,
+          "factor": 0.4804515024066261
+        },
+        {
+          "completed_updates": 278,
+          "factor": 0.47719551885043693
+        },
+        {
+          "completed_updates": 279,
+          "factor": 0.4739405040723798
+        },
+        {
+          "completed_updates": 280,
+          "factor": 0.4706865963517304
+        },
+        {
+          "completed_updates": 281,
+          "factor": 0.4674339339207343
+        },
+        {
+          "completed_updates": 282,
+          "factor": 0.4641826549587352
+        },
+        {
+          "completed_updates": 283,
+          "factor": 0.46093289758630396
+        },
+        {
+          "completed_updates": 284,
+          "factor": 0.45768479985937194
+        },
+        {
+          "completed_updates": 285,
+          "factor": 0.454438499763365
+        },
+        {
+          "completed_updates": 286,
+          "factor": 0.4511941352073424
+        },
+        {
+          "completed_updates": 287,
+          "factor": 0.4479518440181381
+        },
+        {
+          "completed_updates": 288,
+          "factor": 0.4447117639345052
+        },
+        {
+          "completed_updates": 289,
+          "factor": 0.44147403260126483
+        },
+        {
+          "completed_updates": 290,
+          "factor": 0.43823878756345913
+        },
+        {
+          "completed_updates": 291,
+          "factor": 0.43500616626050703
+        },
+        {
+          "completed_updates": 292,
+          "factor": 0.4317763060203663
+        },
+        {
+          "completed_updates": 293,
+          "factor": 0.4285493440537
+        },
+        {
+          "completed_updates": 294,
+          "factor": 0.4253254174480463
+        },
+        {
+          "completed_updates": 295,
+          "factor": 0.4221046631619956
+        },
+        {
+          "completed_updates": 296,
+          "factor": 0.4188872180193723
+        },
+        {
+          "completed_updates": 297,
+          "factor": 0.41567321870342183
+        },
+        {
+          "completed_updates": 298,
+          "factor": 0.41246280175100436
+        },
+        {
+          "completed_updates": 299,
+          "factor": 0.40925610354679426
+        },
+        {
+          "completed_updates": 300,
+          "factor": 0.40605326031748656
+        },
+        {
+          "completed_updates": 301,
+          "factor": 0.40285440812600926
+        },
+        {
+          "completed_updates": 302,
+          "factor": 0.3996596828657436
+        },
+        {
+          "completed_updates": 303,
+          "factor": 0.3964692202547511
+        },
+        {
+          "completed_updates": 304,
+          "factor": 0.3932831558300074
+        },
+        {
+          "completed_updates": 305,
+          "factor": 0.3901016249416447
+        },
+        {
+          "completed_updates": 306,
+          "factor": 0.386924762747202
+        },
+        {
+          "completed_updates": 307,
+          "factor": 0.3837527042058835
+        },
+        {
+          "completed_updates": 308,
+          "factor": 0.3805855840728245
+        },
+        {
+          "completed_updates": 309,
+          "factor": 0.3774235368933676
+        },
+        {
+          "completed_updates": 310,
+          "factor": 0.3742666969973464
+        },
+        {
+          "completed_updates": 311,
+          "factor": 0.37111519849337915
+        },
+        {
+          "completed_updates": 312,
+          "factor": 0.3679691752631715
+        },
+        {
+          "completed_updates": 313,
+          "factor": 0.36482876095582906
+        },
+        {
+          "completed_updates": 314,
+          "factor": 0.3616940889821797
+        },
+        {
+          "completed_updates": 315,
+          "factor": 0.3585652925091056
+        },
+        {
+          "completed_updates": 316,
+          "factor": 0.35544250445388675
+        },
+        {
+          "completed_updates": 317,
+          "factor": 0.3523258574785536
+        },
+        {
+          "completed_updates": 318,
+          "factor": 0.34921548398425234
+        },
+        {
+          "completed_updates": 319,
+          "factor": 0.3461115161056191
+        },
+        {
+          "completed_updates": 320,
+          "factor": 0.34301408570516745
+        },
+        {
+          "completed_updates": 321,
+          "factor": 0.33992332436768613
+        },
+        {
+          "completed_updates": 322,
+          "factor": 0.33683936339464954
+        },
+        {
+          "completed_updates": 323,
+          "factor": 0.3337623337986393
+        },
+        {
+          "completed_updates": 324,
+          "factor": 0.3306923662977789
+        },
+        {
+          "completed_updates": 325,
+          "factor": 0.32762959131018077
+        },
+        {
+          "completed_updates": 326,
+          "factor": 0.32457413894840514
+        },
+        {
+          "completed_updates": 327,
+          "factor": 0.32152613901393323
+        },
+        {
+          "completed_updates": 328,
+          "factor": 0.3184857209916529
+        },
+        {
+          "completed_updates": 329,
+          "factor": 0.31545301404435755
+        },
+        {
+          "completed_updates": 330,
+          "factor": 0.31242814700725974
+        },
+        {
+          "completed_updates": 331,
+          "factor": 0.3094112483825173
+        },
+        {
+          "completed_updates": 332,
+          "factor": 0.30640244633377467
+        },
+        {
+          "completed_updates": 333,
+          "factor": 0.3034018686807183
+        },
+        {
+          "completed_updates": 334,
+          "factor": 0.30040964289364624
+        },
+        {
+          "completed_updates": 335,
+          "factor": 0.29742589608805337
+        },
+        {
+          "completed_updates": 336,
+          "factor": 0.2944507550192317
+        },
+        {
+          "completed_updates": 337,
+          "factor": 0.2914843460768842
+        },
+        {
+          "completed_updates": 338,
+          "factor": 0.28852679527975666
+        },
+        {
+          "completed_updates": 339,
+          "factor": 0.28557822827028423
+        },
+        {
+          "completed_updates": 340,
+          "factor": 0.2826387703092528
+        },
+        {
+          "completed_updates": 341,
+          "factor": 0.27970854627047914
+        },
+        {
+          "completed_updates": 342,
+          "factor": 0.2767876806355045
+        },
+        {
+          "completed_updates": 343,
+          "factor": 0.2738762974883078
+        },
+        {
+          "completed_updates": 344,
+          "factor": 0.27097452051003373
+        },
+        {
+          "completed_updates": 345,
+          "factor": 0.2680824729737378
+        },
+        {
+          "completed_updates": 346,
+          "factor": 0.2652002777391507
+        },
+        {
+          "completed_updates": 347,
+          "factor": 0.26232805724745867
+        },
+        {
+          "completed_updates": 348,
+          "factor": 0.2594659335161008
+        },
+        {
+          "completed_updates": 349,
+          "factor": 0.25661402813358725
+        },
+        {
+          "completed_updates": 350,
+          "factor": 0.25377246225433303
+        },
+        {
+          "completed_updates": 351,
+          "factor": 0.2509413565935107
+        },
+        {
+          "completed_updates": 352,
+          "factor": 0.24812083142192326
+        },
+        {
+          "completed_updates": 353,
+          "factor": 0.2453110065608936
+        },
+        {
+          "completed_updates": 354,
+          "factor": 0.24251200137717566
+        },
+        {
+          "completed_updates": 355,
+          "factor": 0.23972393477788173
+        },
+        {
+          "completed_updates": 356,
+          "factor": 0.23694692520543292
+        },
+        {
+          "completed_updates": 357,
+          "factor": 0.23418109063252623
+        },
+        {
+          "completed_updates": 358,
+          "factor": 0.23142654855712352
+        },
+        {
+          "completed_updates": 359,
+          "factor": 0.22868341599745895
+        },
+        {
+          "completed_updates": 360,
+          "factor": 0.2259518094870695
+        },
+        {
+          "completed_updates": 361,
+          "factor": 0.22323184506984256
+        },
+        {
+          "completed_updates": 362,
+          "factor": 0.22052363829508775
+        },
+        {
+          "completed_updates": 363,
+          "factor": 0.21782730421262736
+        },
+        {
+          "completed_updates": 364,
+          "factor": 0.2151429573679084
+        },
+        {
+          "completed_updates": 365,
+          "factor": 0.21247071179713772
+        },
+        {
+          "completed_updates": 366,
+          "factor": 0.20981068102243594
+        },
+        {
+          "completed_updates": 367,
+          "factor": 0.20716297804701705
+        },
+        {
+          "completed_updates": 368,
+          "factor": 0.204527715350385
+        },
+        {
+          "completed_updates": 369,
+          "factor": 0.2019050048835579
+        },
+        {
+          "completed_updates": 370,
+          "factor": 0.19929495806431025
+        },
+        {
+          "completed_updates": 371,
+          "factor": 0.19669768577244123
+        },
+        {
+          "completed_updates": 372,
+          "factor": 0.19411329834506286
+        },
+        {
+          "completed_updates": 373,
+          "factor": 0.19154190557191386
+        },
+        {
+          "completed_updates": 374,
+          "factor": 0.18898361669069513
+        },
+        {
+          "completed_updates": 375,
+          "factor": 0.18643854038242869
+        },
+        {
+          "completed_updates": 376,
+          "factor": 0.18390678476684158
+        },
+        {
+          "completed_updates": 377,
+          "factor": 0.18138845739777149
+        },
+        {
+          "completed_updates": 378,
+          "factor": 0.17888366525859967
+        },
+        {
+          "completed_updates": 379,
+          "factor": 0.17639251475770357
+        },
+        {
+          "completed_updates": 380,
+          "factor": 0.17391511172393848
+        },
+        {
+          "completed_updates": 381,
+          "factor": 0.1714515614021403
+        },
+        {
+          "completed_updates": 382,
+          "factor": 0.16900196844865573
+        },
+        {
+          "completed_updates": 383,
+          "factor": 0.1665664369268951
+        },
+        {
+          "completed_updates": 384,
+          "factor": 0.16414507030291248
+        },
+        {
+          "completed_updates": 385,
+          "factor": 0.16173797144101004
+        },
+        {
+          "completed_updates": 386,
+          "factor": 0.15934524259936755
+        },
+        {
+          "completed_updates": 387,
+          "factor": 0.1569669854256992
+        },
+        {
+          "completed_updates": 388,
+          "factor": 0.15460330095293429
+        },
+        {
+          "completed_updates": 389,
+          "factor": 0.15225428959492693
+        },
+        {
+          "completed_updates": 390,
+          "factor": 0.14992005114218804
+        },
+        {
+          "completed_updates": 391,
+          "factor": 0.14760068475764787
+        },
+        {
+          "completed_updates": 392,
+          "factor": 0.14529628897244212
+        },
+        {
+          "completed_updates": 393,
+          "factor": 0.14300696168172716
+        },
+        {
+          "completed_updates": 394,
+          "factor": 0.14073280014052075
+        },
+        {
+          "completed_updates": 395,
+          "factor": 0.13847390095957002
+        },
+        {
+          "completed_updates": 396,
+          "factor": 0.13623036010124845
+        },
+        {
+          "completed_updates": 397,
+          "factor": 0.13400227287547783
+        },
+        {
+          "completed_updates": 398,
+          "factor": 0.13178973393568055
+        },
+        {
+          "completed_updates": 399,
+          "factor": 0.1295928372747574
+        },
+        {
+          "completed_updates": 400,
+          "factor": 0.12741167622109556
+        },
+        {
+          "completed_updates": 401,
+          "factor": 0.12524634343460334
+        },
+        {
+          "completed_updates": 402,
+          "factor": 0.1230969309027739
+        },
+        {
+          "completed_updates": 403,
+          "factor": 0.12096352993677711
+        },
+        {
+          "completed_updates": 404,
+          "factor": 0.1188462311675812
+        },
+        {
+          "completed_updates": 405,
+          "factor": 0.11674512454210201
+        },
+        {
+          "completed_updates": 406,
+          "factor": 0.11466029931938182
+        },
+        {
+          "completed_updates": 407,
+          "factor": 0.11259184406679817
+        },
+        {
+          "completed_updates": 408,
+          "factor": 0.11053984665630023
+        },
+        {
+          "completed_updates": 409,
+          "factor": 0.10850439426067704
+        },
+        {
+          "completed_updates": 410,
+          "factor": 0.10648557334985309
+        },
+        {
+          "completed_updates": 411,
+          "factor": 0.10448346968721611
+        },
+        {
+          "completed_updates": 412,
+          "factor": 0.10249816832597214
+        },
+        {
+          "completed_updates": 413,
+          "factor": 0.10052975360553446
+        },
+        {
+          "completed_updates": 414,
+          "factor": 0.09857830914793814
+        },
+        {
+          "completed_updates": 415,
+          "factor": 0.09664391785428977
+        },
+        {
+          "completed_updates": 416,
+          "factor": 0.09472666190124457
+        },
+        {
+          "completed_updates": 417,
+          "factor": 0.09282662273751535
+        },
+        {
+          "completed_updates": 418,
+          "factor": 0.09094388108041312
+        },
+        {
+          "completed_updates": 419,
+          "factor": 0.08907851691241708
+        },
+        {
+          "completed_updates": 420,
+          "factor": 0.08723060947777789
+        },
+        {
+          "completed_updates": 421,
+          "factor": 0.08540023727915014
+        },
+        {
+          "completed_updates": 422,
+          "factor": 0.08358747807425837
+        },
+        {
+          "completed_updates": 423,
+          "factor": 0.08179240887259293
+        },
+        {
+          "completed_updates": 424,
+          "factor": 0.08001510593213945
+        },
+        {
+          "completed_updates": 425,
+          "factor": 0.07825564475613805
+        },
+        {
+          "completed_updates": 426,
+          "factor": 0.07651410008987686
+        },
+        {
+          "completed_updates": 427,
+          "factor": 0.07479054591751622
+        },
+        {
+          "completed_updates": 428,
+          "factor": 0.07308505545894556
+        },
+        {
+          "completed_updates": 429,
+          "factor": 0.07139770116667332
+        },
+        {
+          "completed_updates": 430,
+          "factor": 0.06972855472274853
+        },
+        {
+          "completed_updates": 431,
+          "factor": 0.06807768703571626
+        },
+        {
+          "completed_updates": 432,
+          "factor": 0.06644516823760438
+        },
+        {
+          "completed_updates": 433,
+          "factor": 0.06483106768094526
+        },
+        {
+          "completed_updates": 434,
+          "factor": 0.06323545393582847
+        },
+        {
+          "completed_updates": 435,
+          "factor": 0.06165839478698909
+        },
+        {
+          "completed_updates": 436,
+          "factor": 0.06009995723092654
+        },
+        {
+          "completed_updates": 437,
+          "factor": 0.05856020747305973
+        },
+        {
+          "completed_updates": 438,
+          "factor": 0.05703921092491393
+        },
+        {
+          "completed_updates": 439,
+          "factor": 0.055537032201341874
+        },
+        {
+          "completed_updates": 440,
+          "factor": 0.05405373511777939
+        },
+        {
+          "completed_updates": 441,
+          "factor": 0.05258938268753344
+        },
+        {
+          "completed_updates": 442,
+          "factor": 0.05114403711910631
+        },
+        {
+          "completed_updates": 443,
+          "factor": 0.04971775981355181
+        },
+        {
+          "completed_updates": 444,
+          "factor": 0.04831061136186787
+        },
+        {
+          "completed_updates": 445,
+          "factor": 0.04692265154242137
+        },
+        {
+          "completed_updates": 446,
+          "factor": 0.0455539393184099
+        },
+        {
+          "completed_updates": 447,
+          "factor": 0.04420453283535597
+        },
+        {
+          "completed_updates": 448,
+          "factor": 0.04287448941863692
+        },
+        {
+          "completed_updates": 449,
+          "factor": 0.04156386557105024
+        },
+        {
+          "completed_updates": 450,
+          "factor": 0.040272716970412514
+        },
+        {
+          "completed_updates": 451,
+          "factor": 0.039001098467194906
+        },
+        {
+          "completed_updates": 452,
+          "factor": 0.037749064082191974
+        },
+        {
+          "completed_updates": 453,
+          "factor": 0.0365166670042279
+        },
+        {
+          "completed_updates": 454,
+          "factor": 0.035303959587895895
+        },
+        {
+          "completed_updates": 455,
+          "factor": 0.034110993351334995
+        },
+        {
+          "completed_updates": 456,
+          "factor": 0.032937818974040634
+        },
+        {
+          "completed_updates": 457,
+          "factor": 0.031784486294712144
+        },
+        {
+          "completed_updates": 458,
+          "factor": 0.0306510443091359
+        },
+        {
+          "completed_updates": 459,
+          "factor": 0.02953754116810281
+        },
+        {
+          "completed_updates": 460,
+          "factor": 0.028444024175363736
+        },
+        {
+          "completed_updates": 461,
+          "factor": 0.02737053978561943
+        },
+        {
+          "completed_updates": 462,
+          "factor": 0.026317133602547393
+        },
+        {
+          "completed_updates": 463,
+          "factor": 0.025283850376864203
+        },
+        {
+          "completed_updates": 464,
+          "factor": 0.0242707340044247
+        },
+        {
+          "completed_updates": 465,
+          "factor": 0.023277827524356975
+        },
+        {
+          "completed_updates": 466,
+          "factor": 0.02230517311723429
+        },
+        {
+          "completed_updates": 467,
+          "factor": 0.021352812103282715
+        },
+        {
+          "completed_updates": 468,
+          "factor": 0.020420784940626102
+        },
+        {
+          "completed_updates": 469,
+          "factor": 0.019509131223567622
+        },
+        {
+          "completed_updates": 470,
+          "factor": 0.018617889680906774
+        },
+        {
+          "completed_updates": 471,
+          "factor": 0.017747098174295206
+        },
+        {
+          "completed_updates": 472,
+          "factor": 0.016896793696627443
+        },
+        {
+          "completed_updates": 473,
+          "factor": 0.01606701237046998
+        },
+        {
+          "completed_updates": 474,
+          "factor": 0.015257789446526171
+        },
+        {
+          "completed_updates": 475,
+          "factor": 0.014469159302139212
+        },
+        {
+          "completed_updates": 476,
+          "factor": 0.013701155439831247
+        },
+        {
+          "completed_updates": 477,
+          "factor": 0.012953810485880735
+        },
+        {
+          "completed_updates": 478,
+          "factor": 0.012227156188935606
+        },
+        {
+          "completed_updates": 479,
+          "factor": 0.011521223418665238
+        },
+        {
+          "completed_updates": 480,
+          "factor": 0.010836042164448945
+        },
+        {
+          "completed_updates": 481,
+          "factor": 0.010171641534101383
+        },
+        {
+          "completed_updates": 482,
+          "factor": 0.009528049752636714
+        },
+        {
+          "completed_updates": 483,
+          "factor": 0.00890529416106911
+        },
+        {
+          "completed_updates": 484,
+          "factor": 0.008303401215251582
+        },
+        {
+          "completed_updates": 485,
+          "factor": 0.0077223964847517035
+        },
+        {
+          "completed_updates": 486,
+          "factor": 0.00716230465176565
+        },
+        {
+          "completed_updates": 487,
+          "factor": 0.0066231495100695925
+        },
+        {
+          "completed_updates": 488,
+          "factor": 0.006104953964008897
+        },
+        {
+          "completed_updates": 489,
+          "factor": 0.005607740027524899
+        },
+        {
+          "completed_updates": 490,
+          "factor": 0.0051315288232200995
+        },
+        {
+          "completed_updates": 491,
+          "factor": 0.004676340581460492
+        },
+        {
+          "completed_updates": 492,
+          "factor": 0.004242194639516417
+        },
+        {
+          "completed_updates": 493,
+          "factor": 0.003829109440740719
+        },
+        {
+          "completed_updates": 494,
+          "factor": 0.003437102533785541
+        },
+        {
+          "completed_updates": 495,
+          "factor": 0.003066190571856864
+        },
+        {
+          "completed_updates": 496,
+          "factor": 0.0027163893120066285
+        },
+        {
+          "completed_updates": 497,
+          "factor": 0.002387713614463882
+        },
+        {
+          "completed_updates": 498,
+          "factor": 0.002080177442003117
+        },
+        {
+          "completed_updates": 499,
+          "factor": 0.0017937938593513003
+        },
+        {
+          "completed_updates": 500,
+          "factor": 0.0015285750326325953
+        },
+        {
+          "completed_updates": 501,
+          "factor": 0.0012845322288519978
+        },
+        {
+          "completed_updates": 502,
+          "factor": 0.0010616758154161632
+        },
+        {
+          "completed_updates": 503,
+          "factor": 0.0008600152596933142
+        },
+        {
+          "completed_updates": 504,
+          "factor": 0.0006795591286109515
+        },
+        {
+          "completed_updates": 505,
+          "factor": 0.0005203150882918672
+        },
+        {
+          "completed_updates": 506,
+          "factor": 0.0003822899037286276
+        },
+        {
+          "completed_updates": 507,
+          "factor": 0.0002654894384959694
+        },
+        {
+          "completed_updates": 508,
+          "factor": 0.00016991865450188826
+        },
+        {
+          "completed_updates": 509,
+          "factor": 9.558161177669611e-05
+        },
+        {
+          "completed_updates": 510,
+          "factor": 4.248146830060362e-05
+        },
+        {
+          "completed_updates": 511,
+          "factor": 1.062047986977177e-05
+        },
+        {
+          "completed_updates": 512,
+          "factor": 0.0
+        }
+      ],
+      "multiplier": "f(k)=k/30 for0<=k<30; f(k)=0.5*(1+cos(pi*(k-30)/482)) for30<=k<=512. k is number of completed updates.",
+      "num_cycles": 0.5,
+      "ordering": "Update u+1 consumes base_lr*f(u); call scheduler.step exactly once after optimizer.step. Step-zero last_epoch=0/_step_count=1; checkpoint after512 last_epoch=512/_step_count=513 and nextLR0.",
+      "reference_sentinels": [
+        {
+          "backbone_next_lr": 0.0,
+          "completed_updates": 0,
+          "factor": 0.0,
+          "head_next_lr": 0.0
+        },
+        {
+          "backbone_next_lr": 1.6666666666666668e-07,
+          "completed_updates": 1,
+          "factor": 0.03333333333333333,
+          "head_next_lr": 1.6666666666666667e-06
+        },
+        {
+          "backbone_next_lr": 4.833333333333333e-06,
+          "completed_updates": 29,
+          "factor": 0.9666666666666667,
+          "head_next_lr": 4.8333333333333334e-05
+        },
+        {
+          "backbone_next_lr": 5e-06,
+          "completed_updates": 30,
+          "factor": 1.0,
+          "head_next_lr": 5e-05
+        },
+        {
+          "backbone_next_lr": 4.999946897600652e-06,
+          "completed_updates": 31,
+          "factor": 0.9999893795201302,
+          "head_next_lr": 4.9999468976006514e-05
+        },
+        {
+          "backbone_next_lr": 4.978789026802418e-06,
+          "completed_updates": 50,
+          "factor": 0.9957578053604836,
+          "head_next_lr": 4.978789026802419e-05
+        },
+        {
+          "backbone_next_lr": 7.642875163162976e-09,
+          "completed_updates": 500,
+          "factor": 0.0015285750326325953,
+          "head_next_lr": 7.642875163162977e-08
+        },
+        {
+          "backbone_next_lr": 5.310239934885886e-11,
+          "completed_updates": 511,
+          "factor": 1.062047986977177e-05,
+          "head_next_lr": 5.310239934885885e-10
+        },
+        {
+          "backbone_next_lr": 0.0,
+          "completed_updates": 512,
+          "factor": 0.0,
+          "head_next_lr": 0.0
+        }
+      ],
+      "total_updates": 512,
+      "warmup_updates": 30
+    },
+    "steps": 512,
+    "stochastic_hardware": "Freeze thread counts and environment flags, with MPS fallback disabled. Do not claim cross-hardware bitwise continuation. Resume requires the exact backend/software and declared RNG policy.",
+    "temperatures_in_loss": 1.0,
+    "update_sequence": [
+      "Require matching reviewed identities, valid initial-pair gate, fixed tape/step cursor, and empty gradients.",
+      "Reconstruct exact eight requests and permutations from tape; verify semantic/encoding digests before computation; no dropping records.",
+      "Apply arm-independent update RNG seed and call model.train().",
+      "Execute contiguous microbatches slots[0:2],[2:4],[4:6],[6:8]. For each compute existing request_batch_loss and backpropagate micro_loss*(2/8). Delete intermediates; empty MPS cache after microbatch.",
+      "Reject nonfinite outputs/loss/gradients; require expected trainable gradient coverage. Clip global norm once at1 with error_if_nonfinite=True.",
+      "Call optimizer.step once, scheduler.step once, zero_grad(set_to_none=True); synchronize/empty_cache as fixed; validate parameters and optimizer state.",
+      "Only now advance committed step/cursor and append the update event. Publish scheduled/interrupted/terminal checkpoint as required."
+    ]
+  },
+  "uncertainty": {
+    "algorithm": "For each seed/population, use its single frozen random.Random(rng_seed) stream. For each of 20,000 draws, traverse sorted strata and select exactly n parent IDs with choices(sorted_parent_ids, k=n). Apply the same multiplicities jointly to every compared model, temperature and eligible metric in that population. Compute the declared question-weighted or equal-task-source mean. Retain every draw. Parent sufficient statistics and bounded draw blocks may accelerate arithmetic without changing the parent draw sequence or estimand.",
+    "cluster": "(origin_source, parent_id). Prefix task-source labels with the track when combining decision and transfer Score cells. One sampled parent multiplicity applies to all of its questions and both arms.",
+    "draws": 20000,
+    "eligible_rows": "Freeze per-population metric eligibility and strata before outcomes. No alternative seed, bootstrap draw rejection, or post-result source removal.",
+    "limits": [
+      "Development populations were inspected before T05; results are exploratory.",
+      "Intervals condition on the fitted checkpoints and the observed parents/strata.",
+      "Two training seeds do not estimate a reliable population distribution over training seeds.",
+      "Do not refit models, classifiers, thresholds or calibrators inside bootstrap draws.",
+      "Secondary semantic outcomes never redefine the primary gate."
+    ],
+    "multiplicity": "The two seed-17 target-accuracy claims each receive a one-sided 97.5% parent lower bound; their Bonferroni family alpha is 0.05. Other intervals are pointwise descriptive. Sharing bootstrap draws across conditions does not imply a simultaneous interval. Seed-23 launch uses the six point gates only.",
+    "quantiles": {
+      "lower95_index": 499,
+      "method": "inverse empirical CDF / nearest rank",
+      "one_sided97_5_lower_index": 499,
+      "upper95_index": 19499
+    },
+    "strata": "(origin_source, sorted tuple of task-source incidence for the whole parent within this metric population). The Score population is separately frozen so its metric eligibility is identical for every draw. Require at least two parents per stratum. No splitting a parent by task and no rejecting draws.",
+    "stream_seed_table": [
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "decision_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 9418299043183835965,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "emotion_native",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 6319529411590191231,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "korean_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 12455845431977141554,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "offensive_native",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 860411034010556167,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "other_transfer",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 12661104643531428263,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 17,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation",
+          "rps"
+        ],
+        "population": "score_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 4277092021187357100,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "decision_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 11033632217870393897,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "emotion_native",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 10831445306946753820,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "korean_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 10939812905727493239,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "offensive_native",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 11904719203430732391,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation"
+        ],
+        "population": "other_transfer",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 1871252437631553447,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      },
+      {
+        "draws": 20000,
+        "experiment_seed": 23,
+        "metrics": [
+          "accuracy",
+          "nll",
+          "brier_histogram",
+          "brier_annotation",
+          "rps"
+        ],
+        "population": "score_common_clean",
+        "reused_jointly_for": [
+          "targeted_minus_control",
+          "control_minus_generation79",
+          "targeted_minus_generation79"
+        ],
+        "rng_seed": 6116888380585534642,
+        "temperatures": [
+          "raw",
+          "fixed"
+        ]
+      }
+    ]
+  }
+}

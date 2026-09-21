@@ -1,0 +1,1043 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": 1,
+  "schemas": {
+    "descriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "archive_member": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "questions": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        },
+        "rows": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        },
+        "schema_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "self_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "type": "integer",
+          "x-python-type": "type(value) is int; bool rejected"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "sha256",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "initial_pair": {
+      "additionalProperties": false,
+      "properties": {
+        "all_parity_passed": {
+          "type": "boolean"
+        },
+        "all_resets_valid": {
+          "type": "boolean"
+        },
+        "all_tensors_equal": {
+          "type": "boolean"
+        },
+        "arms": {
+          "type": "object"
+        },
+        "pair_initialization_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "arms",
+        "all_tensors_equal",
+        "all_resets_valid",
+        "all_parity_passed",
+        "pair_initialization_sha256"
+      ],
+      "type": "object"
+    },
+    "initialization": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "code": {
+          "type": "object"
+        },
+        "initialization_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "optimizer_signature": {
+          "type": "object"
+        },
+        "parity_report": {
+          "type": "object"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reset_state": {
+          "type": "object"
+        },
+        "rng_identity": {
+          "type": "object"
+        },
+        "run_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "source_checkpoint": {
+          "type": "object"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "step_zero_checkpoint": {},
+        "tensor_state_identity": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "arm",
+        "run_id",
+        "source_checkpoint",
+        "step_zero_checkpoint",
+        "tensor_state_identity",
+        "optimizer_signature",
+        "reset_state",
+        "rng_identity",
+        "parity_report",
+        "runtime",
+        "code",
+        "initialization_sha256"
+      ],
+      "type": "object"
+    },
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "object"
+        },
+        "experiment_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "files": {
+          "type": "array"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "population_counts": {
+          "type": "object"
+        },
+        "pre_m4_counters": {
+          "type": "object"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tape_counts": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "status",
+        "protocol_sha256",
+        "files",
+        "code",
+        "runtime",
+        "population_counts",
+        "tape_counts",
+        "pre_m4_counters",
+        "manifest_sha256"
+      ],
+      "type": "object"
+    },
+    "normal_question": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "instructions": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "type": "integer"
+        },
+        "option_keys": {},
+        "options": {},
+        "soft": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "instructions",
+        "options",
+        "option_keys",
+        "label",
+        "soft",
+        "source"
+      ],
+      "type": "object"
+    },
+    "normal_request": {
+      "additionalProperties": false,
+      "properties": {
+        "origin_source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "original_record_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "questions": {
+          "type": "array"
+        },
+        "request_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "request_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "request_uid": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "state": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "state_sha256": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_uid",
+        "origin_source",
+        "parent_id",
+        "request_id",
+        "state",
+        "state_sha256",
+        "questions",
+        "original_record_sha256",
+        "request_sha256"
+      ],
+      "type": "object"
+    },
+    "pair_result": {
+      "additionalProperties": false,
+      "properties": {
+        "arm_reports": {
+          "type": "object"
+        },
+        "bootstrap": {
+          "type": "object"
+        },
+        "contrasts": {
+          "type": "object"
+        },
+        "gate": {
+          "type": "object"
+        },
+        "limitations": {
+          "type": "array"
+        },
+        "paired_memberships": {
+          "type": "object"
+        },
+        "point_metrics": {
+          "type": "object"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "result_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "zero_reference": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "zero_reference",
+        "arm_reports",
+        "paired_memberships",
+        "point_metrics",
+        "contrasts",
+        "bootstrap",
+        "gate",
+        "limitations",
+        "result_sha256"
+      ],
+      "type": "object"
+    },
+    "pilot_gate": {
+      "additionalProperties": false,
+      "properties": {
+        "all_requirements_passed": {
+          "type": "boolean"
+        },
+        "arm_checkpoints": {
+          "type": "object"
+        },
+        "arm_reports": {
+          "type": "object"
+        },
+        "gate_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_code": {
+          "type": "object"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "requirements": {
+          "type": "array"
+        },
+        "result_descriptor": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "seed23_eligible": {
+          "type": "boolean"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "producer_code",
+        "arm_checkpoints",
+        "arm_reports",
+        "result_descriptor",
+        "requirements",
+        "all_requirements_passed",
+        "seed23_eligible",
+        "gate_sha256"
+      ],
+      "type": "object"
+    },
+    "prediction_report": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "checkpoint": {
+          "type": "object"
+        },
+        "code": {
+          "type": "object"
+        },
+        "counters": {
+          "type": "object"
+        },
+        "evaluation_inventory": {
+          "type": "object"
+        },
+        "metrics": {},
+        "observations": {
+          "type": "array"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "temperature_contract": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "arm",
+        "run_id",
+        "checkpoint",
+        "evaluation_inventory",
+        "observations",
+        "metrics",
+        "temperature_contract",
+        "counters",
+        "runtime",
+        "code",
+        "report_sha256"
+      ],
+      "type": "object"
+    },
+    "prediction_row": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_float32": {
+          "type": "array"
+        },
+        "encoding_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "type": "integer"
+        },
+        "logits": {
+          "type": "array"
+        },
+        "ordered_option_descriptions": {
+          "type": "array"
+        },
+        "ordered_option_keys": {
+          "type": "array"
+        },
+        "origin_source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "packed_tokens": {
+          "type": "integer"
+        },
+        "parent_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "population_ids": {
+          "type": "array"
+        },
+        "primitive": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "question_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "question_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "request_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "row_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "soft": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "state_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "task_source": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "key",
+        "request_id",
+        "question_id",
+        "origin_source",
+        "parent_id",
+        "task_source",
+        "primitive",
+        "population_ids",
+        "state_sha256",
+        "question_sha256",
+        "ordered_option_keys",
+        "ordered_option_descriptions",
+        "label",
+        "soft",
+        "encoding_sha256",
+        "packed_tokens",
+        "cpu_float32",
+        "logits",
+        "row_sha256"
+      ],
+      "type": "object"
+    },
+    "protocol": {
+      "additionalProperties": false,
+      "properties": {
+        "basis_commit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "bootstrap_contract": {
+          "type": "object"
+        },
+        "checkpoint_contract": {
+          "type": "object"
+        },
+        "compute_contract": {
+          "type": "object"
+        },
+        "data_contract": {
+          "type": "object"
+        },
+        "evaluation_contract": {
+          "type": "object"
+        },
+        "experiment_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "gate_contract": {
+          "type": "object"
+        },
+        "input_bindings": {
+          "type": "object"
+        },
+        "producer_code": {
+          "type": "object"
+        },
+        "producer_commit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "prohibited": {
+          "type": "array"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "source_checkpoint": {
+          "type": "object"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tape_contract": {
+          "type": "object"
+        },
+        "training_contract": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "status",
+        "basis_commit",
+        "producer_commit",
+        "producer_code",
+        "runtime",
+        "input_bindings",
+        "source_checkpoint",
+        "data_contract",
+        "tape_contract",
+        "training_contract",
+        "evaluation_contract",
+        "bootstrap_contract",
+        "gate_contract",
+        "checkpoint_contract",
+        "compute_contract",
+        "prohibited",
+        "protocol_sha256"
+      ],
+      "type": "object"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "attempt_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "counters": {
+          "type": "object"
+        },
+        "external_exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "failure": {
+          "type": "object"
+        },
+        "input_descriptors": {
+          "type": "object"
+        },
+        "last_committed_checkpoint": {},
+        "output_descriptors": {
+          "type": "object"
+        },
+        "phase": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "process": {
+          "type": "object"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "receipt_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "status": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "protocol_sha256",
+        "seed",
+        "arm",
+        "phase",
+        "run_id",
+        "process",
+        "runtime",
+        "attempt_id",
+        "input_descriptors",
+        "output_descriptors",
+        "counters",
+        "last_committed_checkpoint",
+        "failure",
+        "external_exit_code",
+        "receipt_sha256"
+      ],
+      "type": "object"
+    },
+    "review_index": {
+      "additionalProperties": false,
+      "properties": {
+        "index_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "kind": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "members": {
+          "type": "array"
+        },
+        "pre_m4_counters": {
+          "type": "object"
+        },
+        "privacy_scope": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "producer_commit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "protocol_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "spec_sha256": {}
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "producer_commit",
+        "spec_sha256",
+        "protocol_sha256",
+        "manifest_sha256",
+        "members",
+        "pre_m4_counters",
+        "privacy_scope",
+        "index_sha256"
+      ],
+      "type": "object"
+    },
+    "tape_row": {
+      "additionalProperties": false,
+      "properties": {
+        "arm": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "model_rng_seed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "previous_row_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "row_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            23
+          ],
+          "type": "integer"
+        },
+        "slots": {
+          "type": "array"
+        },
+        "update_index": {
+          "maximum": 511,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "seed",
+        "arm",
+        "update_index",
+        "model_rng_seed",
+        "slots",
+        "previous_row_sha256",
+        "row_sha256"
+      ],
+      "type": "object"
+    },
+    "tape_slot": {
+      "additionalProperties": false,
+      "properties": {
+        "augmented_request_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "encoding_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "origin_source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "question_permutations": {},
+        "request_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "request_sha256": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "request_uid": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "slot": {
+          "maximum": 7,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slot",
+        "role",
+        "request_uid",
+        "origin_source",
+        "parent_id",
+        "request_id",
+        "request_sha256",
+        "question_permutations",
+        "augmented_request_sha256",
+        "encoding_sha256",
+        "tokens"
+      ],
+      "type": "object"
+    }
+  },
+  "semantic_invariants": {
+    "common_rules": {
+      "file_digest": "SHA256 of exact file bytes, with exact byte size. Keep file and content/self-digest identities separate.",
+      "incomplete": "Publish the complete manifest last, after validation. On failed final verification remove the complete marker, preserve observations and publish a failed receipt. Readers require exact payload inventory.",
+      "json": "UTF-8 strict JSON. Reject duplicate keys, numeric NaN/Infinity, unknown fields and Boolean values masquerading as integers. Split JSONL as bytes on newline so Unicode separators inside strings survive.",
+      "paths": "Resolve artifact IDs through explicit roots. Reject traversal and symlinks; hash and parse the same captured bytes. Do not use broad globbing to discover evidence.",
+      "publication": "Create outputs exclusively. Sync temporary files, publish without clobbering and sync their directory. Only mutable pointers owned by the new run may use atomic replacement.",
+      "self_digest": "SHA256 of canonical JSON with only the object's own self-digest field omitted. ensure_ascii=False, sort_keys=True, separators=(comma,colon), allow_nan=False.",
+      "self_hash_fields": {
+        "initialization": "initialization_sha256",
+        "manifest": "manifest_sha256",
+        "pair_initialization": "pair_initialization_sha256",
+        "pair_result": "result_sha256",
+        "pilot_gate": "gate_sha256",
+        "prediction_report": "report_sha256",
+        "protocol": "protocol_sha256",
+        "receipt": "receipt_sha256",
+        "review_index": "index_sha256",
+        "specification": "spec_sha256",
+        "tape_row": "row_sha256"
+      }
+    },
+    "freeze_status": "frozen_pre_m4; do not invent runtime tensor fingerprints before real initialization is authorized.",
+    "frozen_manifest_files": [
+      "protocol.json",
+      "input-bindings.json",
+      "original-pool.jsonl",
+      "target-pool.jsonl",
+      "target-rendering.json",
+      "exclusion-audit.json",
+      "evaluation-inventory.jsonl",
+      "evaluation-schedule.jsonl",
+      "zero-reference.jsonl",
+      "zero-reference-metrics.json",
+      "tape-s17-control.jsonl",
+      "tape-s17-targeted.jsonl",
+      "tape-s23-control.jsonl",
+      "tape-s23-targeted.jsonl",
+      "tape-alignment.json",
+      "exposure.json",
+      "lr-table.json",
+      "bootstrap-strata.json",
+      "bootstrap-seeds.json",
+      "encoding-budget.json",
+      "historical-source-digests.json"
+    ],
+    "prediction_key": "(track,request_id,question_id,family), with family=original for primary rows. Observation files need state hashes, not repeated raw state text.",
+    "receipt_rules": "Exact phase and status enums; record actual attempted and completed work separately. external_exit_code is null unless captured. Process identity includes PID, start UUID and sanitized argv. A missing launcher marker does not create an inferred exit code.",
+    "request_validation": "Require nonempty identities and state, at least one question, unique question IDs, at least two unique option keys, valid plain-integer hard labels, and optional finite nonnegative soft targets of matching length summing to one within 1e-6. Preserve ordinal/Noul order.",
+    "run_compatibility": "Retain the existing run/checkpoint-v3/latest formats. Bind T05-specific fields in spec.t05 and payload.replay_state, enforced by the new wrapper. Historical validation alone is insufficient for T05 tape semantics.",
+    "schema_implementation": "Implement full Draft 2020-12 schemas with exactly these top-level field contracts and additionalProperties=false at fixed levels. Also enforce semantic/cross-artifact constraints, finite values and plain integer types in Python. A schema-only pass is not an integrity pass."
+  },
+  "specification_id": "haetae-t05-paired-replay-v1"
+}
