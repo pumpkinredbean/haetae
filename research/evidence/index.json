@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "base_commit": "4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294",
+  "reference_source_identity": {
+    "sha256": "ff54ea26399fd9ad335eabba9d6f6a85a49880d8ac23b5217de665b10c2cc3fe",
+    "files": [
+      "experiments/audit_shared_suite.py",
+      "experiments/comparison_protocol.py",
+      "experiments/evaluate_baseline.py",
+      "experiments/evaluate_shared.py",
+      "experiments/freeze_comparison.py",
+      "experiments/freeze_shared_suite.py",
+      "experiments/kev_adapter.py",
+      "experiments/shared_state.py",
+      "experiments/train_shared.py",
+      "src/haetae/checkpoint.py",
+      "pyproject.toml"
+    ]
+  },
+  "artifacts": {
+    "baseline_checkpoint_g61": {
+      "kind": "original",
+      "location_key": "baseline_checkpoint_g61",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "838bd9802d89aa87599e79876d5cc3737f2f08406d83055706bdd080ba1f2606",
+      "size_bytes": 1790789291,
+      "claims": ["Completed historical baseline generation 61 weights"]
+    },
+    "baseline_development_report": {
+      "kind": "original",
+      "location_key": "baseline_development_report",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "20fd43e8db495bef1aadf6c3f73977d58042686d6f87e32a1c3e221234aa648b",
+      "size_bytes": 11061758,
+      "claims": ["Baseline public-development predictions and metrics"]
+    },
+    "baseline_run_manifest": {
+      "kind": "original",
+      "location_key": "baseline_run_manifest",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "c7177e8a8e8ac3a68159df6cdec50c3a5e61987d710967ece7ceb1b1dfdd9719",
+      "size_bytes": 962,
+      "claims": ["Completed baseline generation manifest"]
+    },
+    "baseline_run_spec": {
+      "kind": "original",
+      "location_key": "baseline_run_spec",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "1e14e9aec8d0f146e438c11798ac69b19f79755bad1562fa67e3b74036084019",
+      "size_bytes": 32879,
+      "claims": ["Immutable baseline run identity and consumed data fingerprints"]
+    },
+    "comparison_plan": {
+      "kind": "original",
+      "location_key": "comparison_plan",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "dc8c5e066e15d24eb7aac0034a63663b051bd11a8fb516e9b465484e82dea947",
+      "size_bytes": 12750,
+      "claims": ["Frozen public-development comparison membership"]
+    },
+    "confirmation_measured_archive": {
+      "kind": "original",
+      "location_key": "confirmation_measured_archive",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "3001cfdb8af8ab336dc371ef041f7f2b046218639604abdc6709455e450946f7",
+      "size_bytes": 2172628,
+      "claims": ["Externally reviewed six-process batch-one confirmation package"]
+    },
+    "confirmation_protocol": {
+      "kind": "original",
+      "location_key": "confirmation_protocol",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "e4e47c9e24f900c2e33eb49f484a010eb583bff7c73b9dd5bbb55a45a2b12633",
+      "size_bytes": 4136,
+      "claims": ["Frozen six-process batch-one confirmation protocol"]
+    },
+    "confirmation_summary": {
+      "kind": "original",
+      "location_key": "confirmation_summary",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "c71787fd3c8063f2425a6a9e2f55d5090705865904454257d1e0b18d9389563b",
+      "size_bytes": 5336,
+      "claims": ["Qualified warmed MPS batch-one confirmation metrics"]
+    },
+    "development_comparison": {
+      "kind": "original",
+      "location_key": "development_comparison",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "4d81804932a96afadd568ff4668c44c7cd993bd9ba8587ddc6042e015908b343",
+      "size_bytes": 23474,
+      "claims": ["Accepted paired public-development comparison"]
+    },
+    "execution_protocol": {
+      "kind": "original",
+      "location_key": "execution_protocol",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "e09dda82cc202dbb6b080ed540a83685d6d43485c23014fd097a335f0fc32b39",
+      "size_bytes": 8209,
+      "claims": ["Frozen numerical-equivalence and execution protocol"]
+    },
+    "execution_summary": {
+      "kind": "original",
+      "location_key": "execution_summary",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "2de3e4fbde1ce93a333eb9c2de006673d333ac7a6cbb6da39210b52dad7724aa",
+      "size_bytes": 39879,
+      "claims": ["Qualified numerical-equivalence, timing, and memory summary"]
+    },
+    "korean_suite_development": {
+      "kind": "original",
+      "location_key": "korean_suite_development",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "82db10f63886cd26f23eac79b0e5c5b87236d7b9eaf7102af5956fd3bdc2355b",
+      "size_bytes": 2380189,
+      "claims": ["Frozen Korean public-development population"]
+    },
+    "korean_suite_manifest": {
+      "kind": "original",
+      "location_key": "korean_suite_manifest",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "614a7c0a2febc617f2aaf34bf1906cc8bf0ed958e9138052a37da5ba5b04d5c1",
+      "size_bytes": 5016,
+      "claims": ["Korean suite public-development bindings and exclusions"]
+    },
+    "laya_calibration_measured_archive": {
+      "kind": "original",
+      "location_key": "laya_calibration_measured_archive",
+      "required": false,
+      "contains_locked_data": false,
+      "sha256": "fce99727f89f1209c9a7a27b7c4f88a3b7368fc2c96f30c771a96847e41b3400",
+      "size_bytes": 1957875,
+      "claims": ["Qualified external Laya calibration review package"]
+    },
+    "laya_calibration_summary": {
+      "kind": "original",
+      "location_key": "laya_calibration_summary",
+      "required": false,
+      "contains_locked_data": false,
+      "sha256": "3dcc2d70ffb88eda8df1864f204f6f264b06e4add06724caa9a633490f6286fe",
+      "size_bytes": 14084,
+      "claims": ["Qualified external Laya calibration summary"]
+    },
+    "laya_weighting_measured_archive": {
+      "kind": "original",
+      "location_key": "laya_weighting_measured_archive",
+      "required": false,
+      "contains_locked_data": false,
+      "sha256": "8218218b96202a1a0a5b5b60dedd37ea8b2d1ab58828b92ef0bcf23da16f0e1c",
+      "size_bytes": 868121,
+      "claims": ["Qualified external Laya weighting-ablation review package"]
+    },
+    "laya_weighting_result": {
+      "kind": "original",
+      "location_key": "laya_weighting_result",
+      "required": false,
+      "contains_locked_data": false,
+      "sha256": "4571cad9172aaffe62f3411870431ac8677022f0a76c502e156c8276067526a3",
+      "size_bytes": 12528,
+      "claims": ["Qualified external Laya weighting-ablation result"]
+    },
+    "shared_checkpoint_g79": {
+      "kind": "original",
+      "location_key": "shared_checkpoint_g79",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c",
+      "size_bytes": 1687348267,
+      "claims": ["Completed shared-state generation 79 weights"]
+    },
+    "shared_development_report": {
+      "kind": "original",
+      "location_key": "shared_development_report",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23",
+      "size_bytes": 11043015,
+      "claims": ["Shared-state public-development predictions and metrics"]
+    },
+    "shared_run_manifest": {
+      "kind": "original",
+      "location_key": "shared_run_manifest",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "bf3cae362537c2c70e51af274be38b60c1b39c74cee914daa3daa82fc1bc7526",
+      "size_bytes": 963,
+      "claims": ["Completed shared-state generation manifest"]
+    },
+    "shared_run_spec": {
+      "kind": "original",
+      "location_key": "shared_run_spec",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "ee0601619d71e44314aad102dbfccb067fafc5184c9834b4d2786ea66c620eb7",
+      "size_bytes": 34852,
+      "claims": ["Immutable shared-state run identity and consumed data fingerprints"]
+    },
+    "shared_suite_calibration": {
+      "kind": "original",
+      "location_key": "shared_suite_calibration",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "2b70af1e55714878d5377bb09ececcddf6481bcaf0e26d4ce3304d348fa76476",
+      "size_bytes": 1859074,
+      "claims": ["Frozen shared-state calibration population"]
+    },
+    "shared_suite_development": {
+      "kind": "original",
+      "location_key": "shared_suite_development",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "1af33ba7170aa4ec64ccd83b81974a5c3c61071b7e5b9b2322d4565f05e36556",
+      "size_bytes": 1686377,
+      "claims": ["Frozen shared-state decision public-development population"]
+    },
+    "shared_suite_manifest": {
+      "kind": "original",
+      "location_key": "shared_suite_manifest",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "89b02fe5e76bdfae6ca5930d1e9b15b31dd61188330a68454cc951ac26c24d9c",
+      "size_bytes": 4854,
+      "claims": ["Frozen shared-state train, calibration, and development bindings"]
+    },
+    "shared_suite_rendered_state_audit": {
+      "kind": "original",
+      "location_key": "shared_suite_rendered_state_audit",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "fa1300b3ec30ad321bacaa21ec41fcccb658b8b93378a75aef5d22aa739280b3",
+      "size_bytes": 2868,
+      "claims": ["Rendered-state overlap and binding audit"]
+    },
+    "shared_suite_train": {
+      "kind": "original",
+      "location_key": "shared_suite_train",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "e6170e0f5b1920ca56f74a56f341d7fdf3472d70bbb8fe73ab72eb19dfacf22f",
+      "size_bytes": 21442170,
+      "claims": ["Frozen shared-state supervised training population"]
+    },
+    "transfer_suite_development": {
+      "kind": "original",
+      "location_key": "transfer_suite_development",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "ff374c49c6c9f15f8a56fb274b4a4857d20497eb8dd1ac07ce01560e682a5f2e",
+      "size_bytes": 803309,
+      "claims": ["Frozen English transfer public-development population"]
+    },
+    "transfer_suite_manifest": {
+      "kind": "original",
+      "location_key": "transfer_suite_manifest",
+      "required": true,
+      "contains_locked_data": false,
+      "sha256": "31677c2256b406222e7d94ffdc0a02a70ce05746b9efe307876024c4e77291d1",
+      "size_bytes": 6421,
+      "claims": ["English transfer suite public-development bindings"]
+    }
+  },
+  "protected_history": [
+    "baseline_checkpoint_g61",
+    "baseline_development_report",
+    "baseline_run_manifest",
+    "baseline_run_spec",
+    "comparison_plan",
+    "confirmation_measured_archive",
+    "confirmation_protocol",
+    "confirmation_summary",
+    "development_comparison",
+    "execution_protocol",
+    "execution_summary",
+    "korean_suite_development",
+    "korean_suite_manifest",
+    "laya_calibration_measured_archive",
+    "laya_calibration_summary",
+    "laya_weighting_measured_archive",
+    "laya_weighting_result",
+    "shared_checkpoint_g79",
+    "shared_development_report",
+    "shared_run_manifest",
+    "shared_run_spec",
+    "shared_suite_calibration",
+    "shared_suite_development",
+    "shared_suite_manifest",
+    "shared_suite_rendered_state_audit",
+    "shared_suite_train",
+    "transfer_suite_development",
+    "transfer_suite_manifest"
+  ]
+}

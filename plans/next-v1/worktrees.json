@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "base_commit": "4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294",
+  "reference": {
+    "worktree": "../haetae-evidence-4828f9",
+    "branch": null,
+    "read_only": true
+  },
+  "tracks": {
+    "integration": {
+      "branch": "next/integration",
+      "worktree": "../haetae-next-integration",
+      "owns": [
+        "plans/**",
+        "research/evidence/**",
+        "tools/evidence_registry.py"
+      ]
+    },
+    "science": {
+      "branch": "next/science-coverage",
+      "worktree": "../haetae-next-science",
+      "owns": [
+        "experiments/coverage_v1/**",
+        "tests/coverage_v1/**",
+        "results/exploratory/coverage-v1/**"
+      ]
+    },
+    "runtime": {
+      "branch": "next/runtime-alpha",
+      "worktree": "../haetae-next-runtime",
+      "owns": [
+        "src/haetae/shared_v1.py",
+        "src/haetae/bundle.py",
+        "src/haetae/runtime.py",
+        "src/haetae/api.py",
+        "src/haetae/cli.py",
+        "tools/release/**",
+        "tests/release/**",
+        "examples/**"
+      ]
+    },
+    "documentation": {
+      "branch": "next/docs-alpha",
+      "worktree": "../haetae-next-docs",
+      "owns": [
+        "README.md",
+        "RESEARCH_STATE.md",
+        "docs/**",
+        "LICENSE",
+        "NOTICE",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "CITATION.cff",
+        "CHANGELOG.md",
+        ".github/ISSUE_TEMPLATE/**",
+        "models/shared-v1/**",
+        "results/qualified/**"
+      ]
+    }
+  },
+  "rules": [
+    "Create science, runtime, and documentation worktrees only after the reviewed T00 foundation commit.",
+    "Do not rebase a scientific producer after inference or training.",
+    "Cherry-pick reviewed commits into integration in milestone order.",
+    "Do not merge packaging changes into a frozen scientific producer.",
+    "Allow one MPS owner at a time."
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "base_commit": "4828f9c69ba0f5b1f64fd72aa35fa3ce7269d294",
+  "maturity": "validated research prototype; research-alpha release candidate after packaging and provenance work",
+  "highest_value_uncertainty": "Whether emotion and offensive-tweet losses mainly reflect missing supervision or task/readout binding instead of inaccessible representations",
+  "release_model": "shared-v1 generation 79",
+  "tasks": [
+    {
+      "id": "T00",
+      "track": "integration",
+      "depends_on": [],
+      "compute": "metadata only",
+      "review": "M0",
+      "result": "hash-only evidence registry and immutable reference"
+    },
+    {
+      "id": "T01",
+      "track": "science",
+      "depends_on": ["T00"],
+      "compute": "cached data and metrics only",
+      "review": "M1",
+      "result": "coverage, label, overlap, objective-weight, and cached-error audit"
+    },
+    {
+      "id": "T02",
+      "track": "documentation",
+      "depends_on": ["T00"],
+      "compute": "none",
+      "review": "M2D",
+      "result": "truthful research-alpha documentation and license ledger"
+    },
+    {
+      "id": "T03",
+      "track": "runtime",
+      "depends_on": ["T00"],
+      "compute": "bounded export correctness; no updates",
+      "review": "M2R",
+      "result": "portable data-only generation 79 inference bundle"
+    },
+    {
+      "id": "T04",
+      "track": "science",
+      "depends_on": ["T01"],
+      "compute": "at most 20000 encoded sequences; no updates",
+      "review": "M3",
+      "result": "semantic, accessible-feature, ranking, threshold, and calibration diagnostics"
+    },
+    {
+      "id": "T05",
+      "track": "science",
+      "depends_on": ["T04"],
+      "compute": "synthetic training tests only",
+      "review": "M4",
+      "result": "frozen two-arm replay implementation and deterministic tapes"
+    },
+    {
+      "id": "T06",
+      "track": "science",
+      "depends_on": ["T05"],
+      "compute": "up to four arms of 512 updates; one MPS owner",
+      "review": "M5",
+      "result": "paired replay result with a predeclared replication gate"
+    },
+    {
+      "id": "T07",
+      "track": "runtime",
+      "depends_on": ["T02", "T03"],
+      "compute": "package and offline fixture tests",
+      "review": "M6",
+      "result": "version 0.2.0a1 wheel, source distribution, and CI"
+    },
+    {
+      "id": "T08",
+      "track": "documentation",
+      "depends_on": ["T02", "T03", "T07"],
+      "compute": "none",
+      "review": "M7",
+      "result": "aggregate-only public evidence and model card"
+    },
+    {
+      "id": "T09",
+      "track": "integration",
+      "depends_on": ["T06"],
+      "compute": "none",
+      "review": "M8",
+      "result": "bounded scientific decision including negative outcomes"
+    },
+    {
+      "id": "T10",
+      "track": "integration",
+      "depends_on": ["T07", "T08"],
+      "compute": "clean install and bounded parity checks",
+      "review": "M9",
+      "result": "generation 79 research-alpha release"
+    }
+  ],
+  "fixed_replay": {
+    "steps": 512,
+    "seeds": [17, 23],
+    "effective_batch": 8,
+    "microbatch": 2,
+    "maximum_length": 2048,
+    "backbone_learning_rate": 0.000005,
+    "pointer_learning_rate": 0.00005,
+    "warmup_updates": 30,
+    "gradient_clip": 1.0,
+    "historical_temperature": 1.5197255188671874
+  },
+  "advisor_artifacts": {
+    "machine_plan_sha256": "874bc1fb2dda3d231f9317d18cc5b21a90f1cadd1649e11f3abfd58c91e566d2",
+    "checklist_sha256": "9f31986ab3ad15d95f95b53b261d5f90598f7678b7e6dd22db8820c209700b8d"
+  }
+}
