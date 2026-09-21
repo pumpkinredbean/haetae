@@ -22,6 +22,27 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Exact review of commit `a30ba8b`: publication, rotation, AdamW checks, real signal continuation, and epoch rollover passed. Reported semantic-validation, tokenizer-identity, calibration-binding, descriptor-schema, completed-target, recovery-display, and certification-policy findings are fixed in the current working tree.
 - Targeted re-review of exact commit `06b8728`: ChatGPT 6 Pro inspected the complete commit and ran additional malformed-RNG, scheduler, AdamW-counter, tokenizer-identity, exact-resume, stale-directory, descriptor, and completed-target probes. It reported 27 passes and one expected MPS skip in its CPU environment, closed both pre-run blockers, and explicitly approved starting the unattended 1,536-token run.
 
+## Next-cycle execution
+
+- Foundation commit: `6b9d62ef97cc0e01db147e86cdf26f5d83df4f7a`.
+- ChatGPT 6 Pro returned `M0 EVIDENCE BOUNDARY ACCEPT` after 40 bundled checks and 30 independent synthetic methods.
+- Integration branch: `next/integration`.
+- Science branch: `next/science-coverage`.
+- Runtime branch: `next/runtime-alpha`.
+- Documentation branch: `next/docs-alpha`.
+- The first M1 submission at commit `ab256f37134ee3546ec1fbb92c53796539094725` received `M1 CACHED COVERAGE HOLD`. The cached metrics reproduced, but the output verifier accepted an empty or escaping output inventory, Choice permutations could hide conflicting semantic labels, common-clean source-macro checks were incomplete, and cached token lengths accepted invalid types.
+- Correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` closes those findings, uses centered log probabilities for extreme NLL values, binds the normalization and path-resolution helpers, and records the remaining M3 operational-freeze requirements. Nineteen focused tests pass.
+- Corrected M1 archive SHA-256: `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`.
+- Corrected M1 manifest content SHA-256: `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
+- Corrected M1 manifest file SHA-256: `424d513891c3618002de0ca590b65ae8eff3dbff7a7f9fba674b686483c2fdf4`.
+- ChatGPT 6 Pro returned `M1 CACHED COVERAGE ACCEPT` for correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` and the corrected archive. It verified all archive members, reran 19 repository tests and 27 independent tests, reproduced the cached metrics and six parent-bootstrap comparisons, and confirmed that no model runtime, checkpoint, inference, training, or locked payload was accessed.
+- The accepted C0 archive remains unchanged. Before the metric helper is reused for T04, equal logits with a very large common offset must retain the uniform NLL instead of losing it to absolute-logit cancellation.
+- Regenerated findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent overlap, rendered-state overlap, and semantic label conflicts; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
+- Documentation commit `ae7ba8a26f7554b7f7b3ae297079d142de0b4735` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved. Correction commits `56aaad180e432f6a5dc06911b2357d3dd109a9d0` and `4eba4907293a7c5e17cf5a98cbae19c83ccd0700` align the request interface, token limits, upstream Amazon terms, rights boundary, attribution, metric scope, MPS timing qualification, cached-audit provenance, verifier prerequisites, tooling, and release dependencies with the implementation and evidence.
+- ChatGPT 6 Pro returned `M2D DOCUMENTATION ACCEPT` for exact commit `4eba4907293a7c5e17cf5a98cbae19c83ccd0700`. The final diff contains only the two requested wording corrections: `reference.source_sha256` now matches the verifier output, and the README distinguishes registered `contains_locked_data: false` attestations from independent payload inspection. No model runtime, inference, timing, training, or locked-data access occurred during the final review.
+- Next actions: preserve the accepted documentation, complete the measured T04 review, run the separately frozen exported-runtime parity check, and integrate the accepted science, runtime, and documentation branches without changing historical producers.
+- Status: active.
+
 ## Confirmed model design
 
 - ModernBERT-base backbone.

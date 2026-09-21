@@ -1,0 +1,24 @@
+Haetae
+Copyright 2026 Haetae contributors
+
+This product includes software developed by Haetae contributors under the
+Apache License, Version 2.0.
+
+The current research model is based on jhu-clsp/mmBERT-small. Its upstream
+model card declares the backbone under the MIT License. Any distributed model
+bundle must include the complete upstream MIT notice.
+
+The historical baseline uses answerdotai/ModernBERT-base, whose upstream model
+card declares the architecture, weights, and training code under the Apache
+License, Version 2.0.
+
+Research suites were produced with the Apache-2.0 kev codebase. Dataset terms
+are independent of the kev code license and are recorded in docs/licenses.md.
+
+Portions of the research-suite generation and compatibility work derive from
+the kev project by Jared Palmer, Copyright 2026 Jared Palmer, and remain
+subject to Apache-2.0 attribution. This notice applies to that upstream work;
+Haetae-owned contributions are attributed to Haetae contributors above.
+
+Third-party dataset names and citations identify provenance only. No dataset
+is relicensed by this NOTICE or by the Haetae project license.
