@@ -4,11 +4,12 @@ Status: waiting
 
 ## VEJI-V2 public-development baseline
 
-- Status: active; checkpoint loading and inference are waiting for ChatGPT 6 Pro pre-run review.
+- Status: active; checkpoint loading and inference are waiting for ChatGPT 6 Pro correction re-review.
 - Branch: `next/veji-baseline`.
-- Review candidate implementation commit: `95bb5c52e32bec5d9339958e840bd3816c80b858`.
+- Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
+- Correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
 - Frozen protocol: `experiments/veji_v2_public_development_protocol.json`.
-- Protocol SHA-256: `78c997f06fa8d9043e662359b421f57b5ac2f00291ceeef4512fe3696db316cb`.
+- Protocol SHA-256: `dd103c19d475ea9c3207db4abdcfef5d61e989195e5231fbfe608b034382ba8c`.
 - External checkpoint: `loaiabdalslam/VEJI-V2` at revision `cb8b47117db1b8e4f680616dfbb3a7565addaae5`.
 - Frozen encoder: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` at revision `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`.
 - Public training pool: `loaiabdalslam/VEJI-Synth-v2-200K` at revision `aa30047aef9c5ee501f80e8ea1def512381f123a`.
@@ -17,7 +18,9 @@ Status: waiting
 - Evaluation uses the exact public Decision, transfer, and Korean development memberships already bound by comparison plan `dc11cd8099fd3fe202145b20f4fee241ef98223b59ea3c16d1d243a3d73edd87`.
 - The adapter passes only normalized state, instruction, options, and the public Choice, Noul, or Score primitive. It does not supply task, source, family, or semantic-type hints.
 - State is compiled once per request. Split results are written atomically and can be resumed without repeating completed inference.
-- Validation before review: 140 tests pass; focused lint and protocol, implementation, artifact, suite, and reference-report bindings pass. No checkpoint was loaded and no model inference occurred.
+- ChatGPT 6 Pro returned `VEJI PRERUN HOLD` for the initial commit. It found that cached stages did not fully bind the runtime and actual artifact files, timestamp-valid bytecode could bypass the checked source bytes, and the final report could overwrite a stage path. It also found that Boolean and string logits could pass the reused numeric validator.
+- Correction commit `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0` validates actual model and encoder files on every fresh or cached run, binds the complete software and artifact identity, executes only the exact validated source buffer, rejects non-JSON numeric logits, rejects destination aliases, holds one nonblocking evaluation-directory lock, and publishes stages and the final report without overwriting an existing file.
+- Validation after correction: 146 tests pass; focused lint and protocol, implementation, artifact, runtime, source-byte, lock, alias, and no-clobber checks pass. No checkpoint was loaded and no model inference occurred.
 - Planned tmux session: `haetae-veji-v2-dev`.
 - Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
 - Stage directory: `/Users/minkyu/workspace/haetae-artifacts/veji-v2-public-development-v1/stages`.
