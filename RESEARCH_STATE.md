@@ -516,4 +516,14 @@ The first suspect is the runner's fused `MPS -> CPU float64` conversion. The his
 
 The first implementation at commit `13de58381911dcbf7066914c2f0dafe0575712ee` received `MPS COPY DIAGNOSTIC HOLD`. Its 18-case boundary and finite failure handling passed, but a returned NaN or infinity reached strict JSON serialization and prevented publication of the entire failure report. The correction preserves strict JSON, compares tensors before encoding, serializes nonfinite observations as `NaN`, `+Infinity`, or `-Infinity` strings, and adds an end-to-end regression proving that one nonfinite case plus 17 valid cases publishes a complete self-digested failed result and exits nonzero at the command boundary.
 
-Next actions are to commit and review the bounded tensor-only MPS probe, execute it once on the recorded environment, then either make an output-adapter-only correction if fused transfer fails or freeze a two-request instrumented trace if both transfer paths pass. The separately frozen 32-request exported-runtime parity check remains after T04 is resolved.
+Commit `e50e0b209782368f7028372abb44c9fc50290aee` closes the nonfinite-reporting defect. ChatGPT 6 Pro reviewed the exact commit, ran four supplied tests and 38 independent controlled checks without native MPS or model access, and returned `MPS COPY DIAGNOSTIC START` for one bounded execution.
+
+The authorized tensor-only diagnostic ran once and was preserved at `/Users/minkyu/workspace/haetae-artifacts/mps-copy-diagnostic-v1.json`. Its file SHA-256 is `caa7028ef112402c252f7896d3053c83ff64b92fa6e883cd42bcf8324e344b8a` and its self-digest is `5fac32c20a2a5c737786bfecf2929b3cbb77df1261011372c64bcb8d90f56c3d`. It exited with code 1 because all 18 cases reproduced the same defect:
+
+- the fused MPS-to-CPU float64 conversion returned an all-zero vector without raising an exception;
+- copying to CPU first and then converting to float64 exactly matched the CPU-created reference;
+- the source tensor remained unchanged and its storage offset matched in every case;
+- the behavior was identical for lengths 2, 6, and 7; offsets 0, 1, and 256; and both `no_grad` and `inference_mode`;
+- no checkpoint, dataset, model forward, optimizer update, or locked test was accessed.
+
+This isolates the held semantic result to its output conversion path. The saved-feature probe result remains usable, while the old semantic result remains preserved and held. ChatGPT 6 Pro is reviewing an output-adapter-only amendment that would retain the validated feature artifacts, rerun only the frozen 1,100 semantic variants, require exact membership plus predeclared numerical parity for all 196 original-family rows against the registered generation-79 development report, and publish a new bound result. No further real-model execution is authorized until that implementation receives exact-commit pre-run review. The separately frozen 32-request exported-runtime parity check remains after T04 is resolved.
