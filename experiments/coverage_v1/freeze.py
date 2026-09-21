@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from experiments.coverage_v1.audit import (
+    COVERAGE_OUTPUT_NAMES,
     audit_exposure_weights,
     audit_role_overlap,
     audit_semantics,
@@ -18,19 +19,12 @@ from experiments.coverage_v1.audit import (
     verify_cached_reports,
 )
 from experiments.coverage_v1.registry import (
+    PARTITION_EVIDENCE,
     ArtifactStore,
     canonical_sha256,
+    coverage_code_identity,
     load_json_bytes,
 )
-
-
-PARTITION_EVIDENCE = {
-    "train": "shared_suite_train",
-    "calibration": "shared_suite_calibration",
-    "decision_development": "shared_suite_development",
-    "transfer_development": "transfer_suite_development",
-    "korean_development": "korean_suite_development",
-}
 JSON_EVIDENCE = (
     "baseline_development_report",
     "baseline_run_manifest",
@@ -44,35 +38,6 @@ JSON_EVIDENCE = (
     "shared_suite_rendered_state_audit",
     "transfer_suite_manifest",
 )
-OUTPUT_NAMES = (
-    "coverage.json",
-    "semantic_checks.json",
-    "cached_metrics.json",
-    "diagnostic_protocol.json",
-)
-
-
-def _file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _code_identity(repository: Path) -> dict:
-    names = (
-        "experiments/coverage_v1/__init__.py",
-        "experiments/coverage_v1/registry.py",
-        "experiments/coverage_v1/freeze.py",
-        "experiments/coverage_v1/audit.py",
-        "experiments/coverage_v1/protocol.template.json",
-    )
-    files = {name: _file_sha256(repository / name) for name in names}
-    digest = hashlib.sha256()
-    for name, sha256 in files.items():
-        digest.update(name.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(bytes.fromhex(sha256))
-    return {"sha256": digest.hexdigest(), "files": files}
-
-
 def _partition_summary(rows: list[dict]) -> dict:
     origins = set()
     parents = set()
@@ -228,6 +193,10 @@ def freeze(paths_path: Path, output: Path, registry_path: Path) -> dict:
     _validate_input_bindings(store, partitions, values)
 
     role_overlap = audit_role_overlap(partitions)
+    if role_overlap["status"] != "passed":
+        raise ValueError(
+            "frozen roles contain prohibited overlap or label conflicts"
+        )
     semantic_checks = audit_semantics(partitions)
     coverage = {
         "schema_version": 1,
@@ -283,7 +252,7 @@ def freeze(paths_path: Path, output: Path, registry_path: Path) -> dict:
         )
     }
     repository = Path(__file__).resolve().parents[2]
-    code = _code_identity(repository)
+    code = coverage_code_identity(repository)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent))
@@ -298,6 +267,8 @@ def freeze(paths_path: Path, output: Path, registry_path: Path) -> dict:
             filename: _write_new(temporary / filename, value)
             for filename, value in output_values.items()
         }
+        if set(descriptors) != set(COVERAGE_OUTPUT_NAMES):
+            raise RuntimeError("coverage output inventory changed")
         manifest = build_manifest(store, partitions, descriptors, code)
         _write_new(temporary / "manifest.json", manifest)
         os.rename(temporary, output)

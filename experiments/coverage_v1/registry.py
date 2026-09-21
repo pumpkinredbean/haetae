@@ -29,6 +29,24 @@ PUBLIC_EVIDENCE_IDS = frozenset({
     "transfer_suite_manifest",
 })
 
+PARTITION_EVIDENCE = {
+    "train": "shared_suite_train",
+    "calibration": "shared_suite_calibration",
+    "decision_development": "shared_suite_development",
+    "transfer_development": "transfer_suite_development",
+    "korean_development": "korean_suite_development",
+}
+
+CODE_IDENTITY_FILES = (
+    "experiments/coverage_v1/__init__.py",
+    "experiments/coverage_v1/registry.py",
+    "experiments/coverage_v1/freeze.py",
+    "experiments/coverage_v1/audit.py",
+    "experiments/coverage_v1/protocol.template.json",
+    "experiments/kev_adapter.py",
+    "tools/evidence_registry.py",
+)
+
 
 def canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
@@ -42,6 +60,28 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 def canonical_sha256(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def coverage_code_identity(repository: Path) -> dict:
+    """Bind the audit and the helpers that resolve and normalize its inputs."""
+    files = {
+        name: file_sha256(repository / name)
+        for name in CODE_IDENTITY_FILES
+    }
+    digest = hashlib.sha256()
+    for name, sha256 in files.items():
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(bytes.fromhex(sha256))
+    return {"sha256": digest.hexdigest(), "files": files}
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict:
@@ -120,4 +160,3 @@ class ArtifactStore:
                 continue
             rows.append(load_json_bytes(line, f"{evidence_id} line {number}"))
         return rows
-

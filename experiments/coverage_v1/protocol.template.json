@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "frozen_before_inference",
   "purpose": "Separate semantic and readout sensitivity from accessible-representation loss for emotion and offensive-tweet transfer.",
   "evidence_class": "exploratory diagnostic",
@@ -33,6 +33,16 @@
     "opaque option keys with the original descriptions",
     "one class-definition lexicon derived only from the native taxonomy"
   ],
+  "primitive_rules": {
+    "choice": "Apply candidate rotations only with inverse semantic remapping.",
+    "noul": "Preserve declared yes-first polarity; do not rotate options.",
+    "score": "Preserve the declared ordinal rubric; do not rotate options."
+  },
+  "emotion_populations": {
+    "native_probe": "Fit and score the six-class feature probe only where the question has exactly the six native labels and the gold label is native.",
+    "augmented_report": "Report questions containing or targeting none_of_these as a separate stratum.",
+    "mapping_rule": "Do not score a seventh probe class unless a deterministic mapping from six-class probe probabilities is frozen before inference."
+  },
   "feature_probe": {
     "representation": "Final-layer mean over state tokens excluding special and padding tokens.",
     "backbones": ["pinned original pretrained mmBERT", "completed shared-v1 generation 79"],
@@ -63,6 +73,14 @@
     "accelerator_processes": 1,
     "microbatch": 2
   },
+  "M3_required_bindings": [
+    "exact generation-79 checkpoint, original-backbone, tokenizer, model-configuration, and runtime identities",
+    "source-namespaced support-fit and support-calibration parent membership with file digests",
+    "all rendered original, cyclic, opaque-key, and native-taxonomy input strings",
+    "development exclusion indices and separate native versus augmented emotion membership",
+    "fixed classifier, standardizer, scalar-temperature, and offensive logistic-calibrator fitting rules",
+    "per-arm sequence counts and the aggregate encoded-sequence budget"
+  ],
   "prohibited": [
     "locked test access",
     "development-label fitting",

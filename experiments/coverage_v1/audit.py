@@ -12,7 +12,14 @@ from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
 
-from experiments.coverage_v1.registry import canonical_sha256
+from experiments.coverage_v1.registry import (
+    PARTITION_EVIDENCE,
+    PUBLIC_EVIDENCE_IDS,
+    ArtifactStore,
+    canonical_sha256,
+    coverage_code_identity,
+    load_json_bytes,
+)
 from experiments.kev_adapter import normalize_request
 
 
@@ -48,6 +55,28 @@ TARGET_METADATA = {
     },
 }
 PRIMARY_METRICS = ("accuracy", "nll", "brier_histogram", "brier_annotation")
+COVERAGE_OUTPUT_NAMES = (
+    "coverage.json",
+    "semantic_checks.json",
+    "cached_metrics.json",
+    "diagnostic_protocol.json",
+)
+MANIFEST_FIELDS = {
+    "schema_version",
+    "status",
+    "base_commit",
+    "evidence_registry_sha256",
+    "inputs",
+    "partitions",
+    "outputs",
+    "code",
+    "compute_class",
+    "bootstrap_draws",
+    "model_forwards",
+    "optimizer_updates",
+    "locked_test_opened",
+    "manifest_sha256",
+}
 
 
 def _semantic_label(question: dict) -> str:
@@ -118,14 +147,9 @@ def audit_role_overlap(partitions: dict[str, list[dict]]) -> dict:
                 if question_key in questions:
                     raise ValueError(f"duplicate question identity in {role}")
                 questions.add(question_key)
-                semantic_key = (
-                    state,
-                    source,
-                    question["type"],
-                    question["instructions"],
-                    tuple(question["option_keys"]),
-                    tuple(question["options"]),
-                )
+                semantic_key = (state, canonical_sha256(
+                    _rubric_descriptor(question)
+                ))
                 semantic_labels[semantic_key].add(_semantic_label(question))
         conflicts = sum(len(labels) > 1 for labels in semantic_labels.values())
         inventories[role] = {
@@ -147,10 +171,19 @@ def audit_role_overlap(partitions: dict[str, list[dict]]) -> dict:
                 role_sets[left]["states"] & role_sets[right]["states"]
             ),
         }
+    overlap_detected = any(
+        value for pair in overlaps.values() for value in pair.values()
+    )
+    conflict_detected = any(
+        inventory["conflicting_rendered_question_labels"]
+        for inventory in inventories.values()
+    )
     return {
-        "status": "passed" if not any(
-            value for pair in overlaps.values() for value in pair.values()
-        ) else "overlap_detected",
+        "status": "passed" if not overlap_detected and not conflict_detected else "failed",
+        "overlap_status": "overlap_detected" if overlap_detected else "passed",
+        "label_conflict_status": (
+            "conflict_detected" if conflict_detected else "passed"
+        ),
         "roles": inventories,
         "pairwise_overlap": overlaps,
     }
@@ -465,14 +498,24 @@ def _target(row: dict) -> list[float]:
 def _prediction_metrics(row: dict, temperature: float) -> dict[str, float]:
     if len(row.get("logits", [])) != len(row.get("options", [])):
         raise ValueError("cached logits do not match options")
-    probabilities = _softmax(row["logits"], temperature)
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be finite and positive")
+    scaled_logits = [float(value) / temperature for value in row["logits"]]
+    if not scaled_logits or not all(math.isfinite(value) for value in scaled_logits):
+        raise ValueError("logits must be a nonempty finite list")
+    maximum = max(scaled_logits)
+    log_normalizer = maximum + math.log(sum(
+        math.exp(value - maximum) for value in scaled_logits
+    ))
+    log_probabilities = [value - log_normalizer for value in scaled_logits]
+    probabilities = [math.exp(value) for value in log_probabilities]
     target = _target(row)
     predicted = max(range(len(probabilities)), key=probabilities.__getitem__)
     return {
         "accuracy": float(predicted == row["label"]),
         "nll": -sum(
-            target_value * math.log(max(probability, 1e-300))
-            for target_value, probability in zip(target, probabilities)
+            target_value * log_probability
+            for target_value, log_probability in zip(target, log_probabilities)
         ),
         "brier_histogram": sum(
             (probability - target_value) ** 2
@@ -597,6 +640,30 @@ def _compare_metrics(actual: dict, expected: dict, label: str) -> float:
     return maximum
 
 
+def _compare_grouped_metrics(actual: dict, expected: dict, label: str) -> float:
+    if not isinstance(expected, dict):
+        raise ValueError(f"{label} cached metrics are missing")
+    actual_sources = actual["source"]
+    expected_sources = expected.get("source")
+    if not isinstance(expected_sources, dict) or set(expected_sources) != set(actual_sources):
+        raise ValueError(f"{label} cached source membership is stale")
+    maximum = _compare_metrics(actual["all"], expected.get("all", {}), f"{label} all")
+    maximum = max(
+        maximum,
+        _compare_metrics(
+            actual["source_macro"],
+            expected.get("source_macro", {}),
+            f"{label} source macro",
+        ),
+    )
+    for source, metrics in actual_sources.items():
+        maximum = max(
+            maximum,
+            _compare_metrics(metrics, expected_sources[source], f"{label} {source}"),
+        )
+    return maximum
+
+
 def _validate_report_identity(
     name: str,
     report: dict,
@@ -621,6 +688,45 @@ def _validate_report_identity(
     }
     if report.get("run") != expected_run:
         raise ValueError(f"{name} report uses another completed run")
+
+
+def _validate_input_budget(
+    model_name: str,
+    predictions: dict[str, list[dict]],
+    maximum_allowed: int,
+) -> dict:
+    token_field = (
+        "packed_request_tokens" if model_name == "shared"
+        else "packed_question_tokens"
+    )
+    token_values = []
+    request_lengths = defaultdict(set)
+    for rows in predictions.values():
+        for row in rows:
+            token_count = row.get(token_field)
+            if type(token_count) is not int or token_count <= 0:
+                raise ValueError(
+                    f"{model_name} cached input length is not a positive integer"
+                )
+            token_values.append(token_count)
+            if model_name == "shared":
+                request_key = (row["request_id"], row["state_sha256"])
+                request_lengths[request_key].add(token_count)
+    if not token_values:
+        raise ValueError(f"{model_name} cached input lengths are absent")
+    if model_name == "shared" and any(
+        len(lengths) != 1 for lengths in request_lengths.values()
+    ):
+        raise ValueError("shared cached request length differs across questions")
+    if max(token_values) > maximum_allowed:
+        raise ValueError(f"{model_name} cached input exceeds its bound context")
+    return {
+        "field": token_field,
+        "maximum_observed": max(token_values),
+        "maximum_allowed": maximum_allowed,
+        "overflow": 0,
+        "claim": "validated cached length evidence",
+    }
 
 
 def _semantic_target_metrics(rows: list[dict], source: str, temperature: float) -> dict:
@@ -774,6 +880,9 @@ def verify_cached_reports(
             run_manifests[model_name],
             comparison_plan,
         )
+        predictions = report.get("predictions")
+        if not isinstance(predictions, dict) or set(predictions) != set(population_map):
+            raise ValueError(f"{model_name} report prediction roles differ")
         temperature = float(report["temperature"]["value"])
         model_result = {"temperature": temperature, "partitions": {}}
         for prediction_role, partition_role in population_map.items():
@@ -794,13 +903,12 @@ def verify_cached_reports(
             for scale_name, scale in (("raw", 1.0), ("scaled", temperature)):
                 actual = _reproduce_grouped(rows, scale)
                 expected = section[scale_name]
-                delta = _compare_metrics(actual["all"], expected["all"], f"{model_name} {prediction_role} {scale_name} all")
+                delta = _compare_grouped_metrics(
+                    actual,
+                    expected,
+                    f"{model_name} {prediction_role} {scale_name}",
+                )
                 maximum_delta = max(maximum_delta, delta)
-                delta = _compare_metrics(actual["source_macro"], expected["source_macro"], f"{model_name} {prediction_role} {scale_name} source macro")
-                maximum_delta = max(maximum_delta, delta)
-                for source, metrics in actual["source"].items():
-                    delta = _compare_metrics(metrics, expected["source"][source], f"{model_name} {prediction_role} {scale_name} {source}")
-                    maximum_delta = max(maximum_delta, delta)
                 partition_result[scale_name] = {
                     "all": actual["all"],
                     "source_macro": actual["source_macro"],
@@ -810,25 +918,24 @@ def verify_cached_reports(
             for scale_name, scale in (("raw", 1.0), ("scaled", temperature)):
                 actual = _reproduce_grouped(clean, scale)
                 expected = section["common_clean"][scale_name]
-                delta = _compare_metrics(actual["all"], expected["all"], f"{model_name} common-clean {prediction_role} {scale_name}")
+                delta = _compare_grouped_metrics(
+                    actual,
+                    expected,
+                    f"{model_name} common-clean {prediction_role} {scale_name}",
+                )
                 maximum_delta = max(maximum_delta, delta)
+                partition_result.setdefault("common_clean", {})[scale_name] = {
+                    "all": actual["all"],
+                    "source_macro": actual["source_macro"],
+                }
             partition_result["questions"] = len(rows)
             model_result["partitions"][prediction_role] = partition_result
         max_length = int(runs[model_name]["spec"]["config"]["max_len"])
-        token_field = "packed_request_tokens" if model_name == "shared" else "packed_question_tokens"
-        token_values = [
-            int(row[token_field])
-            for rows in report["predictions"].values()
-            for row in rows
-        ]
-        if max(token_values) > max_length:
-            raise ValueError(f"{model_name} cached input exceeds its bound context")
-        model_result["input_budget"] = {
-            "field": token_field,
-            "maximum_observed": max(token_values),
-            "maximum_allowed": max_length,
-            "overflow": 0,
-        }
+        model_result["input_budget"] = _validate_input_budget(
+            model_name,
+            predictions,
+            max_length,
+        )
         reproduced[model_name] = model_result
     targets = {}
     for source in TARGET_ONTOLOGIES:
@@ -878,7 +985,18 @@ def verify_cached_reports(
 
 
 def audit_manifest(path: Path) -> dict:
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if path.is_symlink():
+        raise ValueError("coverage manifest cannot be a symbolic link")
+    try:
+        manifest_path = path.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("coverage manifest is unavailable") from error
+    if not manifest_path.is_file():
+        raise ValueError("coverage manifest is not a regular file")
+    manifest_data = manifest_path.read_bytes()
+    manifest = load_json_bytes(manifest_data, "coverage manifest")
+    if set(manifest) != MANIFEST_FIELDS:
+        raise ValueError("coverage manifest fields differ from the schema")
     expected_manifest_sha256 = manifest.get("manifest_sha256")
     unsigned = dict(manifest)
     unsigned.pop("manifest_sha256", None)
@@ -890,16 +1008,90 @@ def audit_manifest(path: Path) -> dict:
         raise ValueError("coverage manifest did not preserve the test lock")
     if manifest.get("model_forwards") != 0 or manifest.get("optimizer_updates") != 0:
         raise ValueError("coverage manifest exceeded the C0 compute boundary")
-    for filename, descriptor in manifest.get("outputs", {}).items():
-        output = path.parent / filename
-        data = output.read_bytes()
-        if len(data) != descriptor["size_bytes"] or hashlib.sha256(data).hexdigest() != descriptor["sha256"]:
+    if manifest.get("compute_class") != "C0 cached CPU":
+        raise ValueError("coverage manifest compute class differs")
+    if manifest.get("bootstrap_draws") != 20000:
+        raise ValueError("coverage manifest bootstrap count differs")
+
+    repository = Path(__file__).resolve().parents[2]
+    registry = load_json_bytes(
+        (repository / "research/evidence/index.json").read_bytes(),
+        "evidence registry",
+    )
+    if manifest.get("base_commit") != registry.get("base_commit"):
+        raise ValueError("coverage manifest base commit differs")
+    if manifest.get("evidence_registry_sha256") != canonical_sha256(registry):
+        raise ValueError("coverage manifest evidence registry differs")
+    store = ArtifactStore(registry, {})
+    expected_inputs = {
+        evidence_id: store.binding(evidence_id)
+        for evidence_id in sorted(PUBLIC_EVIDENCE_IDS)
+    }
+    if manifest.get("inputs") != expected_inputs:
+        raise ValueError("coverage manifest input bindings differ")
+    if manifest.get("code") != coverage_code_identity(repository):
+        raise ValueError("coverage manifest producer identity differs")
+
+    partitions = manifest.get("partitions")
+    if not isinstance(partitions, dict) or set(partitions) != set(PARTITION_EVIDENCE):
+        raise ValueError("coverage manifest partition inventory differs")
+    partition_fields = {
+        "evidence_id",
+        "requests",
+        "questions",
+        "unique_source_parents",
+        "origin_sources",
+        "task_sources",
+    }
+    for role, evidence_id in PARTITION_EVIDENCE.items():
+        descriptor = partitions[role]
+        if not isinstance(descriptor, dict) or set(descriptor) != partition_fields:
+            raise ValueError(f"coverage manifest {role} descriptor differs")
+        if descriptor.get("evidence_id") != evidence_id:
+            raise ValueError(f"coverage manifest {role} evidence differs")
+        for field in ("requests", "questions", "unique_source_parents"):
+            if type(descriptor.get(field)) is not int or descriptor[field] <= 0:
+                raise ValueError(f"coverage manifest {role} {field} is invalid")
+        for field in ("origin_sources", "task_sources"):
+            values = descriptor.get(field)
+            if (
+                not isinstance(values, list)
+                or not values
+                or values != sorted(set(values))
+                or not all(isinstance(value, str) and value for value in values)
+            ):
+                raise ValueError(f"coverage manifest {role} {field} is invalid")
+
+    outputs = manifest.get("outputs")
+    if not isinstance(outputs, dict) or set(outputs) != set(COVERAGE_OUTPUT_NAMES):
+        raise ValueError("coverage manifest output inventory differs")
+    output_root = manifest_path.parent.resolve(strict=True)
+    for filename in COVERAGE_OUTPUT_NAMES:
+        descriptor = outputs[filename]
+        if not isinstance(descriptor, dict) or set(descriptor) != {"sha256", "size_bytes"}:
+            raise ValueError(f"coverage output descriptor differs: {filename}")
+        output = manifest_path.parent / filename
+        if output.is_symlink():
+            raise ValueError(f"coverage output is a symbolic link: {filename}")
+        try:
+            resolved_output = output.resolve(strict=True)
+        except OSError as error:
+            raise ValueError(f"coverage output is unavailable: {filename}") from error
+        if resolved_output.parent != output_root or not resolved_output.is_file():
+            raise ValueError(f"coverage output escapes its directory: {filename}")
+        data = resolved_output.read_bytes()
+        if (
+            type(descriptor.get("size_bytes")) is not int
+            or descriptor["size_bytes"] < 0
+            or len(data) != descriptor["size_bytes"]
+            or hashlib.sha256(data).hexdigest() != descriptor.get("sha256")
+        ):
             raise ValueError(f"coverage output changed: {filename}")
     return {
         "status": "verified",
         "manifest_sha256": expected_manifest_sha256,
-        "manifest_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "outputs": sorted(manifest["outputs"]),
+        "manifest_file_sha256": hashlib.sha256(manifest_data).hexdigest(),
+        "outputs": sorted(outputs),
         "model_forwards": 0,
         "optimizer_updates": 0,
         "locked_test_opened": False,

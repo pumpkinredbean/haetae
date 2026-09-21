@@ -4,6 +4,9 @@ from pathlib import Path
 import pytest
 
 from experiments.coverage_v1.audit import (
+    _compare_grouped_metrics,
+    _prediction_metrics,
+    _validate_input_budget,
     _validate_report_identity,
     audit_exposure_weights,
     audit_role_overlap,
@@ -129,7 +132,9 @@ def test_role_audit_detects_rendered_state_overlap_and_missing_role():
     values = roles()
     values["calibration"][0]["state"] = values["train"][0]["state"]
     result = audit_role_overlap(values)
-    assert result["status"] == "overlap_detected"
+    assert result["status"] == "failed"
+    assert result["overlap_status"] == "overlap_detected"
+    assert result["label_conflict_status"] == "passed"
     assert result["pairwise_overlap"]["train__calibration"]["rendered_state_overlap"] == 1
     missing = dict(values)
     missing.pop("calibration")
@@ -151,6 +156,26 @@ def test_role_audit_counts_exact_duplicates_and_label_conflicts():
     values["train"].append(conflict)
     result = audit_role_overlap(values)
     assert result["roles"]["train"]["conflicting_rendered_question_labels"] == 1
+    assert result["status"] == "failed"
+    assert result["label_conflict_status"] == "conflict_detected"
+
+
+def test_role_audit_detects_choice_conflict_after_option_reordering():
+    values = roles()
+    first = values["train"][0]
+    second = copy.deepcopy(first)
+    second["_meta"]["id"] = "fixture/train/reordered"
+    second["_meta"]["group_id"] = "fixture/train/reordered"
+    second["questions"]["answer"]["criteria"] = {
+        "right": "Right",
+        "left": "Left",
+    }
+    second["questions"]["answer"]["label"] = "right"
+    values["train"].append(second)
+    result = audit_role_overlap(values)
+    assert result["roles"]["train"]["conflicting_rendered_question_labels"] == 1
+    assert result["label_conflict_status"] == "conflict_detected"
+    assert result["status"] == "failed"
 
 
 def test_coverage_preserves_task_fragmentation_and_source_order():
@@ -262,6 +287,54 @@ def test_stale_report_run_binding_is_rejected():
     stale["report_sha256"] = canonical_sha256(unsigned)
     with pytest.raises(ValueError, match="another completed run"):
         _validate_report_identity("fixture", stale, run, manifest, plan)
+
+
+def test_grouped_metric_check_covers_macro_and_source_membership():
+    metrics = {
+        key: 0.25 for key in (
+            "accuracy", "nll", "brier_histogram", "brier_annotation",
+        )
+    }
+    actual = {
+        "all": dict(metrics),
+        "source_macro": dict(metrics),
+        "source": {"source": dict(metrics)},
+    }
+    expected = copy.deepcopy(actual)
+    expected["source_macro"]["accuracy"] = 0.987654
+    with pytest.raises(ValueError, match="source macro"):
+        _compare_grouped_metrics(actual, expected, "fixture")
+    expected = copy.deepcopy(actual)
+    expected["source"]["other"] = expected["source"].pop("source")
+    with pytest.raises(ValueError, match="source membership"):
+        _compare_grouped_metrics(actual, expected, "fixture")
+
+
+def test_input_budget_requires_positive_integer_and_shared_consistency():
+    base = {
+        "request_id": "request",
+        "state_sha256": "a" * 64,
+        "packed_request_tokens": 17,
+    }
+    result = _validate_input_budget("shared", {"role": [base]}, 32)
+    assert result["maximum_observed"] == 17
+    for invalid in (-1, 0, True, 1.5):
+        row = {**base, "packed_request_tokens": invalid}
+        with pytest.raises(ValueError, match="positive integer"):
+            _validate_input_budget("shared", {"role": [row]}, 32)
+    other = {**base, "packed_request_tokens": 18}
+    with pytest.raises(ValueError, match="differs across questions"):
+        _validate_input_budget("shared", {"role": [base, other]}, 32)
+
+
+def test_prediction_nll_uses_centered_log_probabilities():
+    row = {
+        "logits": [1000.0, 0.0],
+        "options": ["first", "second"],
+        "label": 1,
+        "soft": None,
+    }
+    assert _prediction_metrics(row, 1.0)["nll"] == pytest.approx(1000.0)
 
 
 def test_coverage_modules_do_not_import_model_runtimes():
