@@ -572,4 +572,19 @@ The new freeze is `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnos
 - fresh freeze replay: 1,100 variants, 2,720 feature rows, and 196 historical references;
 - no checkpoint deserialization, model forward, optimizer update, or locked-test access occurred.
 
-The private review archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-semantic-output-amendment-v1-prerun-v3.zip`, SHA-256 `e44b061f72609873e2d4fef2078299532f98cbbb8567b0a54f3a52af787b0e00`, size 10,662,136 bytes. Its 20 members pass CRC validation, and all 19 review-index payload descriptors reproduce. ChatGPT 6 Pro is reviewing this exact commit and archive. Do not run the semantic-only MPS command unless it returns the exact terminal decision `SEMANTIC OUTPUT AMENDMENT START`.
+The private review archive is `/Users/minkyu/workspace/haetae-artifacts/haetae-semantic-output-amendment-v1-prerun-v3.zip`, SHA-256 `e44b061f72609873e2d4fef2078299532f98cbbb8567b0a54f3a52af787b0e00`, size 10,662,136 bytes. Its 20 members pass CRC validation, and all 19 review-index payload descriptors reproduce. ChatGPT 6 Pro verified the exact archive and commit, reran the previous non-original evidence exploits and the three leaf-file substitutions through CPU-only publication and replay paths, and returned the exact terminal decision `SEMANTIC OUTPUT AMENDMENT START`.
+
+The authorized execution uses the detached exact-review worktree `/Users/minkyu/workspace/haetae-semantic-amendment-run` at commit `75cbaac35d46a636d86cd4ba9ced9b1f4dea95da`. It permits one generation-79 MPS process over only the frozen 1,100 semantic variants, microbatch two, and at most 550 forward calls. It permits no feature extraction, original-pretrained-model load, optimizer update, retry, or resume. The frozen command is:
+
+```bash
+cd /Users/minkyu/workspace/haetae-semantic-amendment-run
+test "$(git rev-parse HEAD)" = "75cbaac35d46a636d86cd4ba9ced9b1f4dea95da" || exit 1
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=.:src uv run --frozen python -u -m experiments.coverage_v1.semantic_output_amendment_v1 run --amendment /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-m3-v3 --plan /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-m3-v7 --held-output /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-v1-results-v1 --copy-result /Users/minkyu/workspace/haetae-artifacts/mps-copy-diagnostic-v1.json --paths /Users/minkyu/workspace/haetae-artifacts/paths.local.json --local-paths /Users/minkyu/workspace/haetae-artifacts/diagnostic-v1-paths.local.json --registry research/evidence/index.json --out /Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-results-v1 --device mps --reviewed-manifest-sha256 27247ecd3cf2aecf5a9030cd85fd30619941adafd42421436f1320517efd7b77 --reviewed-protocol-sha256 f23a19e03a226d8c0ceb8c9fbdd1dc9a588ca63050c2f7e04116381157cae92c --allow-reviewed-inference
+```
+
+Execution state:
+
+- tmux session: `haetae-semantic-amendment-v1`;
+- log: `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-results-v1.log`;
+- output: `/Users/minkyu/workspace/haetae-artifacts/fixed-weight-diagnostic-semantic-amendment-v1-results-v1`;
+- failure policy: preserve every partial observation and the failed receipt, do not retry, and return the exact evidence to ChatGPT 6 Pro.
