@@ -609,7 +609,7 @@ The T05 primary comparison uses the original native request wording. The already
 
 ## T05 paired replay pre-M4 freeze
 
-The paired-replay implementation is frozen at producer commit `e06ca7307862f03d5f0c568d7bc88c132226e7d0` on branch `next/science-coverage`. It adds strict input and file-boundary contracts, deterministic paired tapes, weight-only initialization, current-only checkpoint recovery, terminal endpoint evaluation, parent bootstrap analysis, guarded command dispatch, and a private review package.
+The paired-replay implementation is frozen at producer commit `e06ca7362a06a0ea454df06523ac484657db317b` on branch `next/science-coverage`. It adds strict input and file-boundary contracts, deterministic paired tapes, weight-only initialization, current-only checkpoint recovery, terminal endpoint evaluation, parent bootstrap analysis, guarded command dispatch, and a private review package.
 
 The implementation specification self-digest is `a414f002e2b742c94c34f08ef22de4d04ee6cf8ad2b28e237371481272fe2354`. Freeze directories `/Users/minkyu/workspace/haetae-artifacts/t05-paired-replay-v1-freeze-a` and `/Users/minkyu/workspace/haetae-artifacts/t05-paired-replay-v1-freeze-b` are byte-identical. Protocol self-digest is `14b31e11ad408ec6108a8ef49cc0fcd01f8ea586b3459f8354054866562a3c39`; manifest self-digest is `c1b45d42800637b15627cab91fad18b10c110be35ea0ff86e0eb0c9cc12844c0`.
 

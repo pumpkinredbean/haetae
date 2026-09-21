@@ -6,7 +6,7 @@ Status: frozen pre-M4; execution is not authorized.
 
 - Repository: `https://github.com/pumpkinredbean/haetae`
 - Branch: `next/science-coverage`
-- Producer commit: `e06ca7307862f03d5f0c568d7bc88c132226e7d0`
+- Producer commit: `e06ca7362a06a0ea454df06523ac484657db317b`
 - Basis commit: `9c4e0e8227f0f3299472a1b195cbbe98280491dc`
 - Specification self-digest: `a414f002e2b742c94c34f08ef22de4d04ee6cf8ad2b28e237371481272fe2354`
 
@@ -48,6 +48,6 @@ Only one exact terminal phrase authorizes the seed-17 pair:
 - `M4 PAIRED REPLAY START`
 - `M4 PAIRED REPLAY HOLD`
 
-A start decision authorizes only exact producer commit `e06ca7307862f03d5f0c568d7bc88c132226e7d0`, the frozen protocol and manifest above, and sequential seed-17 control then targeted initialization, parity, training, and endpoint evaluation. Seed 23 remains gated by the independently replayed six-point pilot result.
+A start decision authorizes only exact producer commit `e06ca7362a06a0ea454df06523ac484657db317b`, the frozen protocol and manifest above, and sequential seed-17 control then targeted initialization, parity, training, and endpoint evaluation. Seed 23 remains gated by the independently replayed six-point pilot result.
 
 The current volume has about 33 GB free. The frozen operational rule requires at least 32 times the 1,687,348,267-byte source checkpoint, about 54 GB, before starting a seed pair. No execution may start until that reserve is met without deleting protected evidence.
