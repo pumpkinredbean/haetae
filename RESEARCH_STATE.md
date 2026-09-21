@@ -1,6 +1,6 @@
 # Haetae research state
 
-Status: active
+Status: waiting
 
 ## Objective and completion criteria
 
@@ -11,8 +11,8 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 ## Repository and external review
 
 - Repository: https://github.com/pumpkinredbean/haetae
-- Integration branch: `next/integration`
-- Current release-foundation commit: `8b7b874c60c29ab8b9da7acbc657dbc79c44aa0c`.
+- Primary branch: `main`
+- Accepted release-foundation commit: `7a51b781becbaa5f23a83cd5189dd44fb845420c`.
 - Accepted execution-benchmark code commit: `73d2b49c3d95267b135adbcb3af5f53ede3426d3`
 - Checkpoint format 3 implementation commit: `a30ba8b`
 - Exact-review fix commit: `06b8728`
@@ -27,10 +27,9 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 
 - Foundation commit: `6b9d62ef97cc0e01db147e86cdf26f5d83df4f7a`.
 - ChatGPT 6 Pro returned `M0 EVIDENCE BOUNDARY ACCEPT` after 40 bundled checks and 30 independent synthetic methods.
-- Integration branch: `next/integration`.
+- Primary branch: `main`.
 - Science branch: `next/science-coverage`.
-- Runtime branch `next/runtime-alpha` is merged into integration and will be retired after integration reaches `main`.
-- Documentation branch `next/docs-alpha` is merged into integration and will be retired after integration reaches `main`.
+- The merged `next/docs-alpha`, `next/runtime-alpha`, and `next/integration` branches and their worktrees were retired locally and remotely after the accepted foundation reached `main`. Only the main worktree and the isolated science worktree remain.
 - The first M1 submission at commit `ab256f37134ee3546ec1fbb92c53796539094725` received `M1 CACHED COVERAGE HOLD`. The cached metrics reproduced, but the output verifier accepted an empty or escaping output inventory, Choice permutations could hide conflicting semantic labels, common-clean source-macro checks were incomplete, and cached token lengths accepted invalid types.
 - Correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` closes those findings, uses centered log probabilities for extreme NLL values, binds the normalization and path-resolution helpers, and records the remaining M3 operational-freeze requirements. Nineteen focused tests pass.
 - Corrected M1 archive SHA-256: `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`.
@@ -46,10 +45,11 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - The release foundation now includes GitHub Actions for the locked test suite, maintained release-surface Ruff checks, wheel construction, and isolated wheel installation. The contribution guide uses the same commands and leaves immutable historical producers outside formatting changes.
 - The compatibility API now preserves `yes` and `no` labels when Noul descriptions are present and renders structured state with the same public adapter used for shared-v1 training. The public development population contains 187 described Noul questions and 540 structured-state requests, so both corrections affect supported inputs rather than synthetic edge cases.
 - ChatGPT 6 Pro returned `REPOSITORY FOUNDATION HOLD` for exact commit `ea02f68dbbded5c9a19144decd93e7ff8590aa18`. It independently reproduced the Noul and structured-state normalization defects, inconsistent empty-instruction validation, and arbitrary request-model echo. It also specified the bounded 32-request parity design. Correction commit `8b7b874c60c29ab8b9da7acbc657dbc79c44aa0c` closes those API findings, documents confidence and hash-only verification, includes both `LICENSE` and `NOTICE` in the wheel, and forces a uniformly float32 constructed model even when the caller changed PyTorch's default dtype.
+- ChatGPT 6 Pro returned `REPOSITORY FOUNDATION ACCEPT` for exact commit `7a51b781becbaa5f23a83cd5189dd44fb845420c`. It reran 23 CPU release fixtures, closed every prior adapter, identity, documentation, packaging, and dtype finding, and approved merging the repository foundation while keeping weights private and the parity gate open. GitHub Actions run `35624025113` passed on that exact commit after the `main` push.
 - Generation 79 is not a public open-weight release. Dataset redistribution terms remain unresolved, and the exported runtime still needs the frozen 32-request original-versus-bundle parity review.
 - T04 is complete. T05 received `M4 PAIRED REPLAY HOLD` with seven reproducible execution-boundary defects. No T05 model initialization or optimizer update is authorized.
-- Next actions: obtain exact-commit review of the corrected release foundation, freeze and complete the 32-request original-versus-bundle parity gate, merge the accepted foundation to `main`, retire the merged documentation and runtime branches, and stop at that clean repository baseline before returning to the isolated T05 corrections.
-- Status: active.
+- Next actions after this pause: resolve or replace the training sources that block weight distribution; separately freeze and review the bounded 32-request original-versus-bundle parity panel before any parity execution; return to the isolated T05 corrections only after choosing to resume model development.
+- Status: waiting at a clean repository baseline. No training, benchmark, or long-running process is active.
 
 ## Confirmed model design
 
