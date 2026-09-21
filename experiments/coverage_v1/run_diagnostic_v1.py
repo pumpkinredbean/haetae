@@ -36,7 +36,11 @@ from experiments.coverage_v1.diagnostic_v1 import (
     diagnostic_code_identity,
     verify_frozen,
 )
-from experiments.coverage_v1.registry import canonical_json_bytes, canonical_sha256
+from experiments.coverage_v1.registry import (
+    canonical_json_bytes,
+    canonical_sha256,
+    load_json_bytes,
+)
 from experiments.shared_state import (
     PackedRequest,
     branch_attention_masks,
@@ -52,7 +56,11 @@ from haetae.checkpoint import (
 
 
 def _read_jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line]
+    return [
+        load_json_bytes(line, f"{path.name} line {number}")
+        for number, line in enumerate(path.read_bytes().splitlines(), start=1)
+        if line
+    ]
 
 
 def _resolve_device(name: str) -> torch.device:
@@ -513,6 +521,7 @@ def semantic_results(variants: list[dict], logits_rows: list[dict]) -> dict:
             np.asarray(labels),
             np.stack(log_probabilities),
         )
+        metrics.pop("macro_f1")
         metrics["semantic_action_stability"] = float(np.mean(stable))
         metrics["mean_total_variation"] = float(np.mean(total_variations))
         result.setdefault(target, {}).setdefault(population, {})[family] = metrics
@@ -520,10 +529,6 @@ def semantic_results(variants: list[dict], logits_rows: list[dict]) -> dict:
 
 
 def diagnostic_decisions(probes: dict, semantics: dict, protocol: dict) -> dict:
-    historical_shared_accuracy = {
-        "emotion": 0.31896551724137934,
-        "tweet_offensive": 0.4875,
-    }
     populations = {
         "emotion": "native_six_class",
         "tweet_offensive": "native_binary",
@@ -531,10 +536,13 @@ def diagnostic_decisions(probes: dict, semantics: dict, protocol: dict) -> dict:
     decisions = {}
     for target, population in populations.items():
         gap = protocol["metrics"]["historical_accuracy_gaps"][target]
+        historical = protocol["metrics"]["historical_accuracy_baselines"][
+            "targets"
+        ][target]
         shared_probe = probes[target]["shared"]
         probe_recovery = (
             shared_probe["calibrated"]["accuracy"]
-            - historical_shared_accuracy[target]
+            - historical["shared"]["accuracy"]
         )
         original_semantic = semantics[target][population]["original"]["accuracy"]
         semantic_recoveries = {
@@ -584,11 +592,46 @@ def _write_jsonl(path: Path, rows: list[dict]) -> dict:
     return {"sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data), "rows": len(rows)}
 
 
-def run(plan: Path, local_paths: Path, output: Path, device_name: str) -> dict:
+def require_reviewed_identity(
+    manifest: dict,
+    protocol: dict,
+    reviewed_manifest_sha256: str,
+    reviewed_protocol_sha256: str,
+) -> None:
+    if (
+        manifest.get("manifest_sha256") != reviewed_manifest_sha256
+        or protocol.get("protocol_sha256") != reviewed_protocol_sha256
+    ):
+        raise ValueError("diagnostic plan differs from the reviewed identity")
+
+
+def run(
+    plan: Path,
+    evidence_paths: Path,
+    local_paths: Path,
+    output: Path,
+    device_name: str,
+    registry_path: Path,
+    reviewed_manifest_sha256: str,
+    reviewed_protocol_sha256: str,
+) -> dict:
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"refusing to overwrite {output}")
-    manifest = verify_frozen(plan)
-    protocol = json.loads((plan / "protocol.json").read_text())
+    manifest = verify_frozen(
+        plan,
+        evidence_paths=evidence_paths,
+        local_paths=local_paths,
+        registry_path=registry_path,
+    )
+    protocol = load_json_bytes(
+        (plan / "protocol.json").read_bytes(), "diagnostic protocol",
+    )
+    require_reviewed_identity(
+        manifest,
+        protocol,
+        reviewed_manifest_sha256,
+        reviewed_protocol_sha256,
+    )
     repository = Path(__file__).resolve().parents[2]
     if protocol["code"] != diagnostic_code_identity(repository):
         raise ValueError("diagnostic code differs from the frozen protocol")
@@ -728,14 +771,27 @@ def run(plan: Path, local_paths: Path, output: Path, device_name: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--plan", required=True, type=Path)
+    parser.add_argument("--paths", required=True, type=Path)
     parser.add_argument("--local-paths", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"), required=True)
+    parser.add_argument("--registry", default=Path("research/evidence/index.json"), type=Path)
+    parser.add_argument("--reviewed-manifest-sha256", required=True)
+    parser.add_argument("--reviewed-protocol-sha256", required=True)
     parser.add_argument("--allow-reviewed-inference", action="store_true")
     args = parser.parse_args()
     if not args.allow_reviewed_inference:
         parser.error("M3-reviewed inference requires --allow-reviewed-inference")
-    print(json.dumps(run(args.plan, args.local_paths, args.out, args.device), sort_keys=True))
+    print(json.dumps(run(
+        args.plan,
+        args.paths,
+        args.local_paths,
+        args.out,
+        args.device,
+        args.registry,
+        args.reviewed_manifest_sha256,
+        args.reviewed_protocol_sha256,
+    ), sort_keys=True))
 
 
 if __name__ == "__main__":

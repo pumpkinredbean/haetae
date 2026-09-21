@@ -30,6 +30,44 @@ FIT_PER_CLASS = 256
 CALIBRATION_PER_CLASS = 64
 SEQUENCE_LIMIT = 20_000
 BOOTSTRAP_DRAWS = 20_000
+FITTING_CONTRACT = {
+    "standardizer": {
+        "class": "StandardScaler",
+        "with_mean": True,
+        "with_std": True,
+        "fit_role": "support_fit",
+    },
+    "classifier": {
+        "class": "LogisticRegression",
+        "C": 1.0,
+        "solver": "lbfgs",
+        "max_iter": 1000,
+        "fit_intercept": True,
+        "class_weight": None,
+        "random_state": SEED,
+        "initialization": "zero",
+        "hyperparameter_search": False,
+        "fit_role": "support_fit",
+    },
+    "emotion_calibrator": {
+        "class": "positive scalar temperature",
+        "parameter": "exp(log_temperature)",
+        "bounds_log_temperature": [-5.0, 5.0],
+        "method": "scipy bounded minimize_scalar",
+        "xatol": 1e-12,
+        "maxiter": 1000,
+        "fit_role": "support_calibration",
+    },
+    "offensive_calibrator": {
+        "class": "positive-slope logistic with intercept",
+        "parameters": ["exp(log_slope)", "intercept"],
+        "bounds": [[-5.0, 5.0], [-20.0, 20.0]],
+        "method": "scipy L-BFGS-B",
+        "ftol": 1e-12,
+        "maxiter": 1000,
+        "fit_role": "support_calibration",
+    },
+}
 OUTPUT_FILES = (
     "development.jsonl",
     "exclusions.json",
@@ -373,7 +411,7 @@ def semantic_variants(rows: list[dict]) -> list[dict]:
                 f"label_{index + 1}: {option}"
                 for index, option in enumerate(options)
             ]
-            output.append(_variant_row(row, "opaque_keys", opaque, keys))
+            output.append(_variant_row(row, "alias_prefix", opaque, keys))
             lexicon = [f"{key}: {LEXICON[key]}" for key in keys]
             output.append(_variant_row(row, "native_taxonomy_lexicon", lexicon, keys))
         elif question["type"] == "noul":
@@ -390,6 +428,114 @@ def semantic_variants(rows: list[dict]) -> list[dict]:
     if len({row["variant_id"] for row in output}) != len(output):
         raise ValueError("semantic variant inventory differs")
     return output
+
+
+def historical_accuracy_baselines(
+    store: ArtifactStore,
+    development: list[dict],
+) -> dict:
+    population_by_target = {
+        "emotion": "native_six_class",
+        "tweet_offensive": "native_binary",
+    }
+    memberships = {
+        target: {
+            (row["development_id"], row["question"]["id"])
+            for row in development
+            if row["target"] == target and row["population"] == population
+        }
+        for target, population in population_by_target.items()
+    }
+    membership_sha256 = {
+        target: canonical_sha256([
+            {"request_id": request_id, "question_id": question_id}
+            for request_id, question_id in sorted(values)
+        ])
+        for target, values in memberships.items()
+    }
+    reports = {
+        "baseline": store.read_json("baseline_development_report"),
+        "shared": store.read_json("shared_development_report"),
+    }
+    result = {
+        "reports": {
+            name: store.binding(f"{name}_development_report")
+            for name in reports
+        },
+        "targets": {},
+    }
+    for target, population in population_by_target.items():
+        model_values = {}
+        for model, report in reports.items():
+            predictions = report.get("predictions", {}).get("transfer_development")
+            if not isinstance(predictions, list):
+                raise ValueError(f"{model} transfer predictions are missing")
+            selected = [
+                row for row in predictions
+                if (row.get("request_id"), row.get("question_id"))
+                in memberships[target]
+            ]
+            selected_memberships = [
+                (row.get("request_id"), row.get("question_id"))
+                for row in selected
+            ]
+            if (
+                len(selected_memberships) != len(set(selected_memberships))
+                or set(selected_memberships) != memberships[target]
+            ):
+                raise ValueError(f"{model} historical target membership differs")
+            for row in selected:
+                logits = row.get("logits")
+                label = row.get("label")
+                if (
+                    not isinstance(logits, list)
+                    or not logits
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        for value in logits
+                    )
+                    or type(label) is not int
+                    or not 0 <= label < len(logits)
+                ):
+                    raise ValueError(f"{model} historical prediction is malformed")
+            correct = sum(
+                max(range(len(row["logits"])), key=row["logits"].__getitem__)
+                == row["label"]
+                for row in selected
+            )
+            model_values[model] = {
+                "correct": correct,
+                "questions": len(selected),
+                "accuracy": correct / len(selected),
+            }
+        gap = model_values["baseline"]["accuracy"] - model_values["shared"]["accuracy"]
+        result["targets"][target] = {
+            "population": population,
+            "membership_sha256": membership_sha256[target],
+            "parents": len({
+                (row["source"], row["parent_id"])
+                for row in development
+                if row["target"] == target and row["population"] == population
+            }),
+            **model_values,
+            "baseline_minus_shared_accuracy": gap,
+        }
+    expected = {
+        "emotion": (62, 33, 92),
+        "tweet_offensive": (50, 39, 80),
+    }
+    for target, (baseline_correct, shared_correct, questions) in expected.items():
+        values = result["targets"][target]
+        if (
+            values["baseline"]["correct"] != baseline_correct
+            or values["shared"]["correct"] != shared_correct
+            or values["baseline"]["questions"] != questions
+            or values["shared"]["questions"] != questions
+        ):
+            raise ValueError(f"{target} historical accuracy baseline differs")
+    return result
 
 
 def _write_json(path: Path, value: dict) -> dict:
@@ -539,6 +685,7 @@ def freeze(
         "support_removals": len(support_removals),
     }
     models = _model_bindings(store, local)
+    historical = historical_accuracy_baselines(store, development)
     protocol = {
         "schema_version": 3,
         "status": "frozen_before_inference",
@@ -594,23 +741,22 @@ def freeze(
         },
         "semantic_rendering": {
             "model": "shared_generation_79 pointer readout only",
-            "families": ["original", "all nonzero cyclic Choice rotations", "opaque Choice keys with original option text", "one fixed native-taxonomy lexicon"],
+            "families": ["original", "all nonzero cyclic Choice rotations", "alias-prefix Choice perturbation retaining original option text", "one fixed native-taxonomy lexicon"],
             "choice_mapping": "the semantic key travels with its rendered option and the gold index is remapped exactly",
             "noul_mapping": "yes-first true,false polarity is fixed; no rotation or opaque-key variant",
             "score_mapping": "not present in the target population; ordinal rotation remains prohibited",
             "development_label_fitting": False,
         },
-        "fitting": {
-            "standardizer": {"class": "StandardScaler", "with_mean": True, "with_std": True, "fit_role": "support_fit"},
-            "classifier": {"class": "LogisticRegression", "C": 1.0, "solver": "lbfgs", "max_iter": 1000, "fit_intercept": True, "class_weight": None, "random_state": SEED, "initialization": "zero", "hyperparameter_search": False, "fit_role": "support_fit"},
-            "emotion_calibrator": {"class": "positive scalar temperature", "parameter": "exp(log_temperature)", "bounds_log_temperature": [-5.0, 5.0], "method": "scipy bounded minimize_scalar", "xatol": 1e-12, "maxiter": 1000, "fit_role": "support_calibration"},
-            "offensive_calibrator": {"class": "positive-slope logistic with intercept", "parameters": ["exp(log_slope)", "intercept"], "bounds": [[-5.0, 5.0], [-20.0, 20.0]], "method": "scipy L-BFGS-B", "ftol": 1e-12, "maxiter": 1000, "fit_role": "support_calibration"},
-        },
+        "fitting": FITTING_CONTRACT,
         "metrics": {
             "probe": ["accuracy", "macro_f1", "nll", "multiclass_brier", "offensive_auroc"],
             "semantic": ["accuracy", "nll", "multiclass_brier", "offensive_auroc", "semantic_action_stability", "total_variation"],
             "ranking_threshold_calibration": "report raw ranking, raw threshold action, and support-calibrated action and probability scores separately",
-            "historical_accuracy_gaps": {"emotion": 0.2844827586206896, "tweet_offensive": 0.13749999999999996},
+            "historical_accuracy_baselines": historical,
+            "historical_accuracy_gaps": {
+                target: values["baseline_minus_shared_accuracy"]
+                for target, values in historical["targets"].items()
+            },
         },
         "uncertainty": {
             "draws": BOOTSTRAP_DRAWS,
@@ -672,7 +818,12 @@ def freeze(
         shutil.rmtree(temporary, ignore_errors=True)
         raise
     try:
-        if verify_frozen(output) != manifest:
+        if verify_frozen(
+            output,
+            evidence_paths=evidence_paths,
+            local_paths=local_paths,
+            registry_path=registry_path,
+        ) != manifest:
             raise RuntimeError("published diagnostic manifest differs")
     except BaseException:
         shutil.rmtree(output, ignore_errors=True)
@@ -700,7 +851,13 @@ def _read_jsonl(path: Path, label: str) -> list[dict]:
     return rows
 
 
-def verify_frozen(directory: Path) -> dict:
+def verify_frozen(
+    directory: Path,
+    *,
+    evidence_paths: Path,
+    local_paths: Path,
+    registry_path: Path,
+) -> dict:
     if directory.is_symlink():
         raise ValueError("diagnostic directory cannot be a symlink")
     root = directory.resolve(strict=True)
@@ -755,6 +912,17 @@ def verify_frozen(directory: Path) -> dict:
     repository = Path(__file__).resolve().parents[2]
     if protocol.get("code") != diagnostic_code_identity(repository):
         raise ValueError("diagnostic code identity differs")
+    if protocol.get("fitting") != FITTING_CONTRACT:
+        raise ValueError("diagnostic fitting contract differs")
+    compute = protocol.get("compute", {})
+    if (
+        compute.get("accelerator_processes") != 1
+        or compute.get("microbatch") != 2
+        or compute.get("optimizer_updates") != 0
+        or compute.get("model_forwards_before_M3_review") != 0
+        or compute.get("locked_test_opened") is not False
+    ):
+        raise ValueError("diagnostic execution contract differs")
     if (
         protocol.get("support_sources") != SUPPORT_SOURCES
         or protocol.get("models", {}).get("original_pretrained", {}).get("files")
@@ -763,11 +931,203 @@ def verify_frozen(directory: Path) -> dict:
         != SHARED_TOKENIZER_FILES
     ):
         raise ValueError("diagnostic source identity differs")
+    store = ArtifactStore.from_files(registry_path, evidence_paths)
+    local = _load_local_paths(local_paths)
+    partitions = {
+        role: store.read_jsonl(evidence_id)
+        for role, evidence_id in PARTITION_EVIDENCE.items()
+    }
+    reproduced_exclusions = exclusion_index(partitions)
+    reproduced_excluded_states = {
+        row["sha256"] for row in reproduced_exclusions["state_sha256"]
+    }
+    reproduced_excluded_parents = {
+        (row["source"], row["parent_id"])
+        for row in reproduced_exclusions["source_parents"]
+    }
+    reproduced_fit = []
+    reproduced_calibration = []
+    reproduced_removals = []
+    reproduced_summary = {}
+    for source, path_key in (
+        ("emotion", "emotion_parquet"),
+        ("tweet_offensive", "tweet_offensive_parquet"),
+    ):
+        rows = _support_rows(source, Path(local[path_key]).resolve(strict=True))
+        fit, calibration, removals, summary = select_support(
+            rows,
+            reproduced_excluded_states,
+            reproduced_excluded_parents,
+        )
+        reproduced_fit.extend(fit)
+        reproduced_calibration.extend(calibration)
+        reproduced_removals.extend(removals)
+        reproduced_summary[source] = summary
+    reproduced_development = development_rows(
+        partitions["transfer_development"]
+    )
+    reproduced_historical = historical_accuracy_baselines(
+        store, reproduced_development,
+    )
+    if protocol.get("models") != _model_bindings(store, local):
+        raise ValueError("diagnostic model bindings differ")
+    if protocol.get("support_selection", {}).get("summary") != reproduced_summary:
+        raise ValueError("diagnostic support summary differs")
+    if protocol.get("development", {}).get("evidence") != store.binding(
+        "transfer_suite_development"
+    ):
+        raise ValueError("diagnostic development evidence differs")
+    historical = protocol.get("metrics", {}).get(
+        "historical_accuracy_baselines", {}
+    )
+    if historical != reproduced_historical:
+        raise ValueError("diagnostic historical evidence differs")
+    expected_historical = {
+        "emotion": {"population": "native_six_class", "parents": 80,
+                    "baseline_correct": 62, "shared_correct": 33,
+                    "questions": 92},
+        "tweet_offensive": {"population": "native_binary", "parents": 80,
+                            "baseline_correct": 50, "shared_correct": 39,
+                            "questions": 80},
+    }
+    expected_reports = {
+        "baseline": {
+            "evidence_id": "baseline_development_report",
+            "sha256": "20fd43e8db495bef1aadf6c3f73977d58042686d6f87e32a1c3e221234aa648b",
+            "size_bytes": 11_061_758,
+        },
+        "shared": {
+            "evidence_id": "shared_development_report",
+            "sha256": "960349119103216be9b0945565e578ca1a5303afd70b0338ef2c64b92e4afd23",
+            "size_bytes": 11_043_015,
+        },
+    }
+    if (
+        set(historical) != {"reports", "targets"}
+        or historical.get("reports") != expected_reports
+        or set(historical.get("targets", {})) != set(expected_historical)
+    ):
+        raise ValueError("diagnostic historical evidence differs")
+    for target, expected_values in expected_historical.items():
+        values = historical.get("targets", {}).get(target, {})
+        baseline_accuracy = (
+            expected_values["baseline_correct"] / expected_values["questions"]
+        )
+        shared_accuracy = (
+            expected_values["shared_correct"] / expected_values["questions"]
+        )
+        gap = baseline_accuracy - shared_accuracy
+        if (
+            set(values) != {
+                "population", "membership_sha256", "parents", "baseline", "shared",
+                "baseline_minus_shared_accuracy",
+            }
+            or values.get("population") != expected_values["population"]
+            or values.get("parents") != expected_values["parents"]
+            or set(values.get("baseline", {})) != {
+                "correct", "questions", "accuracy",
+            }
+            or set(values.get("shared", {})) != {
+                "correct", "questions", "accuracy",
+            }
+            or values.get("baseline", {}).get("correct")
+            != expected_values["baseline_correct"]
+            or values.get("shared", {}).get("correct")
+            != expected_values["shared_correct"]
+            or values.get("baseline", {}).get("questions")
+            != expected_values["questions"]
+            or values.get("shared", {}).get("questions")
+            != expected_values["questions"]
+            or values.get("baseline", {}).get("accuracy") != baseline_accuracy
+            or values.get("shared", {}).get("accuracy") != shared_accuracy
+            or values.get("baseline_minus_shared_accuracy") != gap
+            or protocol.get("metrics", {}).get(
+                "historical_accuracy_gaps", {}
+            ).get(target) != gap
+        ):
+            raise ValueError("diagnostic historical accuracy baseline differs")
 
     support_fit = _read_jsonl(_safe_file(root, "support-fit.jsonl"), "support fit")
     support_calibration = _read_jsonl(
         _safe_file(root, "support-calibration.jsonl"), "support calibration",
     )
+    exclusions = load_json_bytes(
+        _safe_file(root, "exclusions.json").read_bytes(), "diagnostic exclusions",
+    )
+    if set(exclusions) != {
+        "state_sha256", "source_parents", "support_removals", "summary",
+    }:
+        raise ValueError("diagnostic exclusion fields differ")
+    excluded_states = set()
+    for row in exclusions["state_sha256"]:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"sha256", "roles"}
+            or not isinstance(row["sha256"], str)
+            or len(row["sha256"]) != 64
+            or not isinstance(row["roles"], list)
+            or not row["roles"]
+        ):
+            raise ValueError("diagnostic state exclusion is malformed")
+        excluded_states.add(row["sha256"])
+    excluded_parents = set()
+    for row in exclusions["source_parents"]:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"source", "parent_id", "roles"}
+            or not isinstance(row["source"], str)
+            or not isinstance(row["parent_id"], str)
+            or not isinstance(row["roles"], list)
+            or not row["roles"]
+        ):
+            raise ValueError("diagnostic parent exclusion is malformed")
+        excluded_parents.add((row["source"], row["parent_id"]))
+    removal_reasons = {
+        "conflicting_labels", "same_label_duplicate",
+        "rendered_state_exclusion", "source_parent_exclusion",
+    }
+    disallowed_support_states = set()
+    disallowed_support_parents = set()
+    for row in exclusions["support_removals"]:
+        required = {
+            "reason", "source", "split", "row", "parent_id", "state",
+            "state_sha256", "label",
+        }
+        if (
+            not isinstance(row, dict)
+            or set(row) != required
+            or row["reason"] not in removal_reasons
+            or row["state_sha256"] != canonical_sha256(row["state"])
+        ):
+            raise ValueError("diagnostic support removal is malformed")
+        if row["reason"] in {
+            "conflicting_labels", "rendered_state_exclusion",
+        }:
+            disallowed_support_states.add(row["state_sha256"])
+        if row["reason"] == "source_parent_exclusion":
+            disallowed_support_parents.add((row["source"], row["parent_id"]))
+    if exclusions["summary"] != {
+        "partition_state_identities": len(excluded_states),
+        "partition_source_parents": len(excluded_parents),
+        "support_removals": len(exclusions["support_removals"]),
+    }:
+        raise ValueError("diagnostic exclusion summary differs")
+    reproduced_exclusions["support_removals"] = reproduced_removals
+    reproduced_exclusions["summary"] = {
+        "partition_state_identities": len(
+            reproduced_exclusions["state_sha256"]
+        ),
+        "partition_source_parents": len(
+            reproduced_exclusions["source_parents"]
+        ),
+        "support_removals": len(reproduced_removals),
+    }
+    if (
+        support_fit != reproduced_fit
+        or support_calibration != reproduced_calibration
+        or exclusions != reproduced_exclusions
+    ):
+        raise ValueError("diagnostic support selection does not reproduce")
     memberships = set()
     for role, rows, per_class in (
         ("fit", support_fit, FIT_PER_CLASS),
@@ -788,6 +1148,8 @@ def verify_frozen(directory: Path) -> dict:
             }
             if set(row) != required:
                 raise ValueError(f"diagnostic {role} row fields differ")
+            if row["split"] != "train":
+                raise ValueError(f"diagnostic {role} split differs")
             if row["state_sha256"] != canonical_sha256(row["state"]):
                 raise ValueError(f"diagnostic {role} state digest differs")
             selection = canonical_sha256({
@@ -798,6 +1160,13 @@ def verify_frozen(directory: Path) -> dict:
             if row["selection_sha256"] != selection:
                 raise ValueError(f"diagnostic {role} selection digest differs")
             identity = (row["source"], row["parent_id"])
+            if (
+                row["state_sha256"] in excluded_states
+                or identity in excluded_parents
+                or row["state_sha256"] in disallowed_support_states
+                or identity in disallowed_support_parents
+            ):
+                raise ValueError("diagnostic support intersects an exclusion")
             if identity in memberships:
                 raise ValueError("diagnostic support roles overlap")
             memberships.add(identity)
@@ -805,6 +1174,8 @@ def verify_frozen(directory: Path) -> dict:
     development = _read_jsonl(
         _safe_file(root, "development.jsonl"), "diagnostic development",
     )
+    if development != reproduced_development:
+        raise ValueError("diagnostic development selection does not reproduce")
     population_counts = Counter(
         (row.get("target"), row.get("population")) for row in development
     )
@@ -830,7 +1201,6 @@ def verify_frozen(directory: Path) -> dict:
         raise ValueError("diagnostic semantic variants do not reproduce")
     unique_development_states = len({row["state_sha256"] for row in development})
     feature_count = len(support_fit) + len(support_calibration) + unique_development_states
-    compute = protocol.get("compute", {})
     microbatch = compute.get("microbatch")
     if type(microbatch) is not int or microbatch <= 0:
         raise ValueError("diagnostic microbatch is invalid")

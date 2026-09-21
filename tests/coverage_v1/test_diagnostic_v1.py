@@ -1,4 +1,5 @@
 import math
+import json
 
 import numpy as np
 import pytest
@@ -7,14 +8,18 @@ import experiments.coverage_v1.diagnostic_v1 as diagnostic
 from experiments.coverage_v1.diagnostic_v1 import (
     _variant_row,
     exclusion_index,
+    historical_accuracy_baselines,
     select_support,
     semantic_variants,
 )
 from experiments.coverage_v1.run_diagnostic_v1 import (
+    _read_jsonl,
     diagnostic_decisions,
     fit_positive_logistic,
     fit_temperature,
     paired_parent_bootstrap,
+    require_reviewed_identity,
+    semantic_results,
 )
 
 
@@ -134,6 +139,118 @@ def test_variant_rejects_a_missing_semantic_label():
         _variant_row(row, "bad", ["sadness"], ["sadness"])
 
 
+def historical_fixture():
+    development = []
+    report_rows = {"baseline": [], "shared": []}
+    specifications = {
+        "emotion": ("native_six_class", 92, 62, 33),
+        "tweet_offensive": ("native_binary", 80, 50, 39),
+    }
+    for target, (population, questions, baseline_correct, shared_correct) in (
+        specifications.items()
+    ):
+        for index in range(questions):
+            request_id = f"{target}/development/{index}"
+            question_id = f"{target}-{index}"
+            development.append({
+                "development_id": request_id,
+                "source": target,
+                "parent_id": f"{target}/parent/{index % 80}",
+                "target": target,
+                "population": population,
+                "question": {"id": question_id},
+            })
+            for model, correct in (
+                ("baseline", baseline_correct),
+                ("shared", shared_correct),
+            ):
+                report_rows[model].append({
+                    "request_id": request_id,
+                    "question_id": question_id,
+                    "logits": [1.0, 0.0] if index < correct else [0.0, 1.0],
+                    "label": 0,
+                })
+
+    class Store:
+        def read_json(self, evidence_id):
+            model = "baseline" if evidence_id.startswith("baseline") else "shared"
+            return {"predictions": {"transfer_development": report_rows[model]}}
+
+        def binding(self, evidence_id):
+            return {"evidence_id": evidence_id}
+
+    return Store(), development, report_rows
+
+
+def test_historical_accuracy_baselines_use_exact_matching_populations():
+    store, development, _ = historical_fixture()
+    result = historical_accuracy_baselines(store, development)
+    assert result["targets"]["emotion"]["baseline"] == {
+        "correct": 62,
+        "questions": 92,
+        "accuracy": pytest.approx(62 / 92),
+    }
+    assert result["targets"]["emotion"]["shared"] == {
+        "correct": 33,
+        "questions": 92,
+        "accuracy": pytest.approx(33 / 92),
+    }
+    assert result["targets"]["tweet_offensive"][
+        "baseline_minus_shared_accuracy"
+    ] == pytest.approx(11 / 80)
+
+
+def test_historical_accuracy_baselines_reject_duplicate_membership_substitution():
+    store, development, report_rows = historical_fixture()
+    report_rows["shared"][91] = dict(report_rows["shared"][0])
+    with pytest.raises(ValueError, match="historical target membership differs"):
+        historical_accuracy_baselines(store, development)
+
+
+def test_runner_jsonl_reader_preserves_unicode_line_separator(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    path.write_bytes(
+        json.dumps({"state": "left\u2028right"}, ensure_ascii=False).encode("utf-8")
+        + b"\n"
+    )
+    assert _read_jsonl(path) == [{"state": "left\u2028right"}]
+
+
+def test_semantic_results_omit_slot_based_macro_f1():
+    variants = [
+        {
+            "variant_id": "first",
+            "development_id": "one",
+            "target": "emotion",
+            "population": "native_six_class",
+            "family": "original",
+            "question": {"option_keys": ["sadness", "joy"], "label": 1},
+        },
+        {
+            "variant_id": "second",
+            "development_id": "two",
+            "target": "emotion",
+            "population": "native_six_class",
+            "family": "original",
+            "question": {"option_keys": ["joy", "sadness"], "label": 0},
+        },
+    ]
+    result = semantic_results(variants, [
+        {"variant_id": "first", "logits": [0.0, 1.0]},
+        {"variant_id": "second", "logits": [0.0, 1.0]},
+    ])["emotion"]["native_six_class"]["original"]
+    assert result["accuracy"] == 0.5
+    assert "macro_f1" not in result
+
+
+def test_reviewed_identity_is_required_before_inference():
+    manifest = {"manifest_sha256": "a" * 64}
+    protocol = {"protocol_sha256": "b" * 64}
+    require_reviewed_identity(manifest, protocol, "a" * 64, "b" * 64)
+    with pytest.raises(ValueError, match="reviewed identity"):
+        require_reviewed_identity(manifest, protocol, "c" * 64, "b" * 64)
+
+
 def test_calibrators_are_positive_and_improve_separable_fixture():
     multiclass_logits = np.array([
         [6.0, 0.0], [5.0, 0.0], [0.0, 6.0], [0.0, 5.0],
@@ -193,12 +310,74 @@ def test_diagnostic_decisions_apply_predeclared_half_gap():
                 "native_taxonomy_lexicon": {"accuracy": 0.6},
             }
         }
-    protocol = {"metrics": {"historical_accuracy_gaps": {
-        "emotion": 0.28,
-        "tweet_offensive": 0.14,
-    }}}
+    protocol = {"metrics": {
+        "historical_accuracy_gaps": {
+            "emotion": 0.28,
+            "tweet_offensive": 0.14,
+        },
+        "historical_accuracy_baselines": {"targets": {
+            "emotion": {"shared": {"accuracy": 0.32}},
+            "tweet_offensive": {"shared": {"accuracy": 0.49}},
+        }},
+    }}
     result = diagnostic_decisions(probes, semantics, protocol)
     assert result["emotion"]["semantic_family_recovers_half_gap"][
         "native_taxonomy_lexicon"
     ] is True
     assert result["tweet_offensive"]["calibration_only_pattern"] is True
+
+
+def test_native_emotion_recovery_does_not_use_all_emotion_baseline():
+    probes = {
+        "emotion": {
+            "shared": {
+                "raw": {
+                    "accuracy": 45 / 92,
+                    "nll": 1.0,
+                    "multiclass_brier": 1.0,
+                },
+                "calibrated": {
+                    "accuracy": 45 / 92,
+                    "nll": 1.0,
+                    "multiclass_brier": 1.0,
+                },
+            },
+            "accessible_feature_regression": False,
+        },
+        "tweet_offensive": {
+            "shared": {
+                "raw": {
+                    "accuracy": 39 / 80,
+                    "nll": 1.0,
+                    "multiclass_brier": 1.0,
+                    "auroc": 0.5,
+                },
+                "calibrated": {
+                    "accuracy": 39 / 80,
+                    "nll": 1.0,
+                    "multiclass_brier": 1.0,
+                    "auroc": 0.5,
+                },
+            },
+            "accessible_feature_regression": False,
+        },
+    }
+    semantics = {
+        "emotion": {"native_six_class": {"original": {"accuracy": 0.4}}},
+        "tweet_offensive": {"native_binary": {"original": {"accuracy": 0.4}}},
+    }
+    protocol = {"metrics": {
+        "historical_accuracy_gaps": {
+            "emotion": 29 / 92,
+            "tweet_offensive": 11 / 80,
+        },
+        "historical_accuracy_baselines": {"targets": {
+            "emotion": {"shared": {"accuracy": 33 / 92}},
+            "tweet_offensive": {"shared": {"accuracy": 39 / 80}},
+        }},
+    }}
+    result = diagnostic_decisions(probes, semantics, protocol)
+    assert result["emotion"]["shared_probe_accuracy_recovery"] == pytest.approx(
+        12 / 92
+    )
+    assert result["emotion"]["shared_probe_recovers_half_gap"] is False
