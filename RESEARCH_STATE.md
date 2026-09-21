@@ -4,7 +4,7 @@ Status: waiting
 
 ## VEJI-V2 public-development baseline
 
-- Status: active; the MPS public-development evaluation and exact local replay are complete, and measured-artifact review by ChatGPT 6 Pro is pending.
+- Status: complete; the MPS public-development evaluation, exact local replay, and measured-artifact review by ChatGPT 6 Pro are qualified.
 - Branch: `next/veji-baseline`.
 - Initial review commit: `d7e7fa48b5c20248462a9370046b2015e073708f`.
 - Initial correction review commit: `4d08228f48e56fa8ef7d6241a60743c7f7bbfbf0`.
@@ -33,6 +33,12 @@ Status: waiting
 - The measured runtime has 120,936,259 parameters and requires 497,967,642 bytes of bound model, encoder, tokenizer, and configuration files. The 13,142,985-byte head is not a standalone runtime.
 - Final report self SHA-256 is `a3d3f54cca7593e19c249423ee219b5ee85807abe6a71438091157c0bc7d06c7`; file SHA-256 is `2e16ce352f806f2e24e1007e3292c183698b30ab4e95c72783946cdd0b0e09c9`. A complete cached replay reproduced the report byte for byte, and independent local validation accepted every stage, input, runtime, metric, bootstrap, and report binding.
 - Measured review archive: `/Users/minkyu/workspace/haetae-veji-v2-public-development-measured-v1.zip`, SHA-256 `8c3727f07895a8a0238b0dde54eab62f507cf2dc876f7e2ca9fae38c474d5028`, manifest SHA-256 `42f1b3e3a8e806f20e2d6ef3c2f53694e5e99967938fea8955d89815db96663e`.
+- ChatGPT 6 Pro returned `VEJI RESULT QUALIFIED`, then repeated the archive-integrity decision against the ZIP attached directly to the review message and returned the same verdict. It verified the 2,079,565-byte archive hash, all 14 ZIP members, all 13 manifest payload hashes and sizes, 10 self-digests, and all four stage-to-report bindings.
+- The review independently reproduced all 9,380 stored prediction vectors, the fitted temperature, every declared point metric, and all 28 bootstrap families comprising 56 intervals and 112 endpoints. Maximum numerical disagreement was `6.67e-16`. It ran stored-logit calculations and scalar temperature fitting only; it loaded no model weights, ran no model inference or native MPS operation, and opened no locked test.
+- On common-clean source-macro accuracy, VEJI scores `0.4011`, `0.3949`, and `0.4906` for Decision, transfer, and Korean, while Haetae scores `0.5990`, `0.4869`, and `0.8088`. The raw parent-bootstrap intervals for every source-macro accuracy difference exclude zero in Haetae's favor.
+- Temperature scaling materially improves VEJI probability scores. On transfer, the scaled source-macro VEJI-minus-Haetae NLL difference is `+0.01595` with interval `[-0.01294, +0.04419]`, and the Brier difference is `+0.01096` with interval `[-0.00689, +0.02803]`; those losses are not statistically separated on this population. Decision and Korean scaled NLL and Brier remain clearly worse for VEJI.
+- The result is limited to the fixed checkpoint, standardized adapter, and named public-development populations. The review did not independently rescan the 190,000-record training pool, reopen the external model and encoder bytes, audit the self-reported 522-question synthetic result, or estimate training-seed and calibration-fit uncertainty.
+- Research decision: close this baseline and retain it as a pinned external comparison. Do not use VEJI as a replacement or teacher, do not rerun inference, and do not describe its head-only size as a complete runtime footprint.
 - No locked test was opened. The original failed-attempt log is preserved before the successful run in `veji_v2_public_development.log`.
 - Planned tmux session: `haetae-veji-v2-dev`.
 - Planned log: `/Users/minkyu/workspace/haetae-veji-baseline/veji_v2_public_development.log`.
