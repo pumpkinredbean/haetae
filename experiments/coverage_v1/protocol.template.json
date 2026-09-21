@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "status": "frozen_before_inference",
+  "purpose": "Separate semantic and readout sensitivity from accessible-representation loss for emotion and offensive-tweet transfer.",
+  "evidence_class": "exploratory diagnostic",
+  "seed": 20260921,
+  "support_sources": {
+    "emotion": {
+      "dataset": "dair-ai/emotion",
+      "revision": "cab853a1dbdf4c42c2b3ef2173804746df8825fe",
+      "config": "split",
+      "split": "train",
+      "native_labels": ["sadness", "joy", "love", "anger", "fear", "surprise"]
+    },
+    "tweet_offensive": {
+      "dataset": "cardiffnlp/tweet_eval",
+      "revision": "39925773dee306b2b4f90ba0ed3e60da4e830ada",
+      "config": "offensive",
+      "split": "train",
+      "native_labels": ["false", "true"]
+    }
+  },
+  "selection": {
+    "order": "SHA-256 of seed, source, and source-namespaced parent",
+    "fit_parents_per_class": 256,
+    "calibration_parents_per_class": 64,
+    "duplicate_policy": "Collapse exact same-label duplicates and remove every parent with conflicting labels.",
+    "exclusions": "Remove consumed training, calibration, public-development parents, and rendered states before selection."
+  },
+  "semantic_variants": [
+    "original wording and option order",
+    "every cyclic option rotation with inverse semantic mapping",
+    "opaque option keys with the original descriptions",
+    "one class-definition lexicon derived only from the native taxonomy"
+  ],
+  "feature_probe": {
+    "representation": "Final-layer mean over state tokens excluding special and padding tokens.",
+    "backbones": ["pinned original pretrained mmBERT", "completed shared-v1 generation 79"],
+    "classifier": {
+      "class": "LogisticRegression",
+      "C": 1.0,
+      "solver": "lbfgs",
+      "max_iter": 1000,
+      "initialization": "zero",
+      "hyperparameter_search": false
+    },
+    "standardization": "Fit on support-fit features only."
+  },
+  "calibration": {
+    "multiclass": "One positive scalar per domain fitted on support-calibration only.",
+    "offensive": "One positive-slope logistic calibrator with intercept fitted on support-calibration only.",
+    "development_fitting": false
+  },
+  "diagnostic_flags": {
+    "accessible_feature_regression": "Original probe accuracy exceeds generation-79 probe accuracy by at least 0.05 with a positive one-sided 97.5% parent lower bound.",
+    "task_or_readout_sensitivity": "A frozen-feature readout or frozen semantic variant recovers at least half the historical target gap.",
+    "calibration_only": "NLL or Brier improves without better class ordering or AUROC."
+  },
+  "compute_limit": {
+    "encoded_sequences": 20000,
+    "optimizer_updates": 0,
+    "model_forwards_before_M3_review": 0,
+    "accelerator_processes": 1,
+    "microbatch": 2
+  },
+  "prohibited": [
+    "locked test access",
+    "development-label fitting",
+    "prompt or hyperparameter search",
+    "backbone updates",
+    "claims of causal proof or zero-shot transfer after support fitting"
+  ]
+}
