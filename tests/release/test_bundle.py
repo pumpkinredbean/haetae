@@ -119,5 +119,5 @@ def test_bundle_rejects_false_export_boundary_claim(tmp_path, monkeypatch):
 def test_bundle_rejects_unreviewed_self_consistent_manifest(tmp_path):
     manifest = write_bundle(tmp_path)
     assert manifest["manifest_sha256"] != bundle_module.EXPECTED_BUNDLE_MANIFEST_SHA256
-    with pytest.raises(BundleError, match="reviewed release candidate"):
+    with pytest.raises(BundleError, match="pinned release candidate"):
         verify_bundle(tmp_path)

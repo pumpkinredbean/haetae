@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from .api import create_app
 from .runtime import HaetaeRuntimeError, load_runtime
-
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
 
@@ -64,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         if not 1 <= args.port <= 65535:
             raise HaetaeRuntimeError("port must be between 1 and 65535")
         import uvicorn
+
+        from .api import create_app
 
         uvicorn.run(
             create_app(args.bundle, device=args.device),

@@ -15,9 +15,26 @@ the options in each branch.
 
 This repository is a research alpha. The checkpoint is validated on frozen
 public development populations, but it is not a production safety system and
-has not been evaluated on locked tests. A portable inference bundle is still
-being prepared. The historical separate-question ModernBERT model remains in
-the repository as the comparison baseline.
+has not been evaluated on locked tests. The historical separate-question
+ModernBERT model remains in the repository as the comparison baseline.
+
+## Release status
+
+| Item | Current state |
+| --- | --- |
+| Current model | shared-v1, generation 79 |
+| Parameters | 140,593,792 total; 98,560 in the pointer head |
+| Weight format | safetensors release candidate, float32 |
+| Weight size | 562,389,888 bytes; tokenizer and config add about 34 MB |
+| Training checkpoint | 1,687,348,267 bytes including optimizer and recovery state |
+| Runtime | Local CLI, Python runtime, `/v1/decide`, and `/v1/systemone` API |
+| Public weights | Not published while training-source redistribution terms remain unresolved |
+| Locked-test evaluation | Not performed |
+
+The code is open source under Apache-2.0. The current model weights are not an
+open-weight release. A byte-verified local bundle exists for release testing,
+but it is deliberately kept outside Git and must not be published until the
+license ledger and runtime parity gate pass.
 
 ## Measured status
 
@@ -73,6 +90,36 @@ See [the current research status](docs/research-status.md),
 [model card](models/shared-v1/README.md), and
 [evidence guide](docs/evidence.md) for the scope of these claims.
 
+## Local runtime
+
+Install the runtime and optional HTTP server dependencies:
+
+```bash
+uv sync --extra serve
+```
+
+The bundle path must contain the exact pinned `model.safetensors`, tokenizer,
+configuration, and manifest. Run one local decision from JSON:
+
+```bash
+uv run haetae decide \
+  --bundle /path/to/shared-v1-bundle \
+  --input examples/shared-v1-request.json
+```
+
+Or start the local API:
+
+```bash
+uv run haetae serve \
+  --bundle /path/to/shared-v1-bundle \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+`/v1/decide` accepts the explicit list form in
+[`examples/shared-v1-request.json`](examples/shared-v1-request.json).
+`/v1/systemone` accepts the compatibility form below.
+
 ## Interface
 
 A request contains one state and typed questions:
@@ -102,15 +149,18 @@ A request contains one state and typed questions:
 declared low-to-high order. Candidate text is never silently truncated: a
 request that cannot preserve every option within the input budget is rejected.
 
-This is the typed research request contract. It is not a claim that shared-v1
-is already deployed. The current checked-in server loads the historical
-baseline; the shared-v1 portable runtime will be documented after export and
-parity review.
+This compatibility endpoint is part of the shared-v1 release-candidate
+runtime. It returns uncalibrated probabilities and reports
+`calibrated: false`. It does not make shared-v1 a deployed service.
 
 ## Repository map
 
 ```text
-src/haetae/                 historical baseline, calibration, and server
+src/haetae/shared_v1.py     versioned shared-v1 architecture
+src/haetae/runtime.py       verified local bundle loader and inference
+src/haetae/api.py           explicit and /v1/systemone HTTP interfaces
+src/haetae/cli.py           local decide and serve commands
+src/haetae/                 historical baseline and research utilities
 experiments/shared_state.py shared-state model implementation
 experiments/train_shared.py immutable shared-v1 training producer
 experiments/evaluate_*.py   frozen public-development evaluators
@@ -122,10 +172,11 @@ docs/                       research, evidence, reproduction, and licenses
 
 ## Reproducing the research
 
-The historical producer environment is locked by `uv.lock`:
+The environment is locked by `uv.lock`. Runtime dependencies are installed by
+default; research dependencies are explicit extras:
 
 ```bash
-uv sync --frozen
+uv sync --frozen --extra research --extra serve --extra dev
 uv run python tools/evidence_registry.py self-test
 ```
 

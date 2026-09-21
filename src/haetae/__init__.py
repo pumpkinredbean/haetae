@@ -1,8 +1,7 @@
-"""haetae: a local System One decision model.
+"""Haetae: a local shared-state model for typed decisions.
 
-State + typed questions (choice / noul / score) in,
-calibrated probability distributions out. One forward pass
-per question; the state is encoded once.
+State and typed questions enter one packed model call. The runtime returns one
+uncalibrated probability distribution for each question and generates no text.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0a1"

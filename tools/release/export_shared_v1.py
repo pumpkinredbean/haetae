@@ -6,12 +6,12 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import tempfile
+from pathlib import Path
 
-from safetensors.torch import save_file
 import torch
+from safetensors.torch import save_file
 from transformers import AutoConfig, AutoTokenizer
 
 from haetae.bundle import (
@@ -34,7 +34,6 @@ from haetae.shared_v1 import (
     SOURCE_IMPLEMENTATION_PATH,
     SOURCE_IMPLEMENTATION_SHA256,
 )
-
 
 TRAINING_SOURCE_FILES = (
     "experiments/audit_shared_suite.py",
@@ -238,11 +237,16 @@ def main() -> None:
     parser.add_argument("--repository", default=Path.cwd(), type=Path)
     args = parser.parse_args()
     manifest = export_bundle(args.run_dir, args.output, args.repository)
-    print(json.dumps({
-        "output": str(args.output.resolve()),
-        "manifest_sha256": manifest["manifest_sha256"],
-        "model_forwards": 0,
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "output": str(args.output.resolve()),
+                "manifest_sha256": manifest["manifest_sha256"],
+                "model_forwards": 0,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

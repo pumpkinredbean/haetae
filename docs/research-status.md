@@ -11,6 +11,8 @@ latency, or calibrated probabilities for arbitrary inputs.
 
 - Backbone: `jhu-clsp/mmBERT-small`
 - Backbone revision: `abc32620dd4f6ab06f5fbe905dc25f310618e09f`
+- Parameters: 140,593,792
+- Float32 safetensors size: 562,389,888 bytes
 - Checkpoint generation: 79
 - Checkpoint SHA-256: `e9c782407912242c34d4da88557bded76e92e1222090d7e25f974dafab588d5c`
 - Training: 3,894 optimizer steps, two request epochs
@@ -47,7 +49,7 @@ Apple M3 Pro environment.
 Evidence: `confirmation_protocol`, `confirmation_summary`, and
 `confirmation_measured_archive`.
 
-## Open scientific question
+## Active scientific question
 
 The transfer loss is not yet evidence that the architecture lacks useful
 features. A cached audit found no shared-v1 training supervision for the
@@ -62,17 +64,23 @@ The cached audit is exploratory evidence produced by commit
 and its manifest content SHA-256 is
 `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
 
-The next experiment is a frozen, fixed-weight diagnostic with no optimizer
-updates. It tests native labels, cyclic and opaque label mappings, ranking,
-thresholds, calibration, and fixed logistic probes on bounded public support
-sets. New inference is capped at 20,000 encoded sequences. Paired training
-replay is allowed only if those diagnostics justify it.
+The fixed-weight diagnostic and its corrected semantic-output replay are
+complete. Explicit native task descriptions improved the emotion and
+offensive development results, but offensive recall fell sharply and wording
+and option-order sensitivity remained substantial. The evidence supports a
+bounded supervision experiment rather than a prompt-only repair.
+
+The paired replay implementation and all four deterministic draw tapes are
+frozen on `next/science-coverage`. No new weights have been produced. The M4
+pre-run review returned a hold after reproducing seven integration and
+execution-guard defects. The science branch must correct and re-freeze those
+boundaries before another review; neither seed-17 arm is authorized.
 
 ## Release blockers
 
 1. Finish source-specific licensing review before distributing generation 79
    weights.
-2. Export a data-only checkpoint and prove parity with the original generation
-   79 checkpoint.
-3. Add an offline portable runtime and clean-install package tests.
+2. Complete the 32-request parity review between the exported data-only bundle
+   and the original generation 79 checkpoint.
+3. Pass clean-wheel tests for the portable runtime and HTTP extras.
 4. Publish only aggregate qualified evidence. Locked tests remain unopened.

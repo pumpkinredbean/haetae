@@ -2,12 +2,12 @@
 
 ## Scope
 
-The current checkout contains historical research producers. It does not yet
-contain the portable generation 79 runtime. Reproduction therefore has two
-levels:
+The checkout contains the portable shared-v1 runtime and the historical
+research producers. Reproduction therefore has three levels:
 
-1. verify the existing evidence and model identity without running inference;
-2. rerun a producer only after reconstructing its exact pinned environment and
+1. verify a local release-candidate bundle without running inference;
+2. verify the existing evidence and model identity without running inference;
+3. rerun a producer only after reconstructing its exact pinned environment and
    public data.
 
 Locked tests are outside both workflows.
@@ -17,7 +17,7 @@ Locked tests are outside both workflows.
 Use the lock file and avoid dependency upgrades:
 
 ```bash
-uv sync --frozen
+uv sync --frozen --extra research --extra serve --extra dev
 uv run python --version
 uv run python tools/evidence_registry.py self-test
 ```
@@ -26,6 +26,24 @@ Generation 79 was produced with Python 3.13.2, PyTorch 2.14.0, Transformers
 5.17.0, and the Apple MPS backend. These versions describe provenance; they do
 not imply that other compatible environments will reproduce training
 bit-for-bit. Evidence: `shared_run_spec`.
+
+## Portable bundle
+
+The bundle is kept outside Git. Its exact inventory is `config.json`,
+`model.safetensors`, `special_tokens_map.json`, `tokenizer.json`,
+`tokenizer_config.json`, and `manifest.json`. The verifier rejects extra files,
+symbolic-link substitution, changed hashes, optimizer or random state, an
+unexpected tensor index, and any manifest other than the pinned release
+candidate.
+
+```bash
+uv run haetae decide \
+  --bundle /path/to/shared-v1-bundle \
+  --input examples/shared-v1-request.json
+```
+
+The local bundle is verification material and is not licensed for public
+distribution while the source-specific release review remains open.
 
 ## Artifact verification
 

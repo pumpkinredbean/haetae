@@ -3,7 +3,13 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from haetae.runtime import HaetaeRuntime, HaetaeRuntimeError, resolve_device
+from haetae.runtime import (
+    HaetaeRuntime,
+    HaetaeRuntimeError,
+    distribution_confidence,
+    resolve_device,
+    widen_logits_cpu_first,
+)
 from haetae.shared_v1 import DELIMITER_TOKENS
 
 
@@ -25,9 +31,13 @@ class Model:
         self.calls += 1
         if self.outputs is not None:
             return self.outputs
-        return [[torch.arange(len(indexes), dtype=torch.float32)
-                 for indexes in encoding.option_indices]
-                for encoding in encodings]
+        return [
+            [
+                torch.arange(len(indexes), dtype=torch.float32)
+                for indexes in encoding.option_indices
+            ]
+            for encoding in encodings
+        ]
 
 
 def runtime(maximum_length=128, outputs=None):
@@ -64,7 +74,37 @@ def test_runtime_returns_raw_probabilities_without_calibration_claim():
     assert loaded.model.calls == 1
     assert result[0]["choice"] == 1
     assert result[0]["calibrated"] is False
+    probabilities = torch.tensor(result[0]["probabilities"], dtype=torch.float64)
     assert sum(result[0]["probabilities"]) == pytest.approx(1.0)
+    assert result[0]["confidence"] == pytest.approx(
+        distribution_confidence(probabilities)
+    )
+
+
+def test_runtime_moves_logits_to_cpu_before_widening():
+    class DeviceGuard:
+        def __init__(self):
+            self.device = "mps"
+            self.events = []
+
+        def detach(self):
+            self.events.append("detach")
+            return self
+
+        def cpu(self):
+            self.events.append("cpu")
+            self.device = "cpu"
+            return self
+
+        def to(self, *, dtype):
+            if self.device != "cpu":
+                raise AssertionError("float64 conversion happened before CPU transfer")
+            self.events.append(("to", dtype))
+            return self
+
+    guarded = DeviceGuard()
+    assert widen_logits_cpu_first(guarded) is guarded
+    assert guarded.events == ["detach", "cpu", ("to", torch.float64)]
 
 
 @pytest.mark.parametrize(

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
-
 
 BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_FORMAT = "haetae-shared-v1-safetensors"
@@ -217,7 +216,7 @@ def verify_bundle(directory: str | Path) -> VerifiedBundle:
     if expected_manifest_sha256 != canonical_sha256(unsigned):
         raise BundleError("bundle manifest self-digest differs")
     if expected_manifest_sha256 != EXPECTED_BUNDLE_MANIFEST_SHA256:
-        raise BundleError("bundle manifest is not the reviewed release candidate")
+        raise BundleError("bundle manifest is not the pinned release candidate")
     if (
         manifest.get("schema_version") != BUNDLE_SCHEMA_VERSION
         or manifest.get("status") != "complete"
@@ -236,8 +235,11 @@ def verify_bundle(directory: str | Path) -> VerifiedBundle:
     if not isinstance(model, dict) or set(model) != MODEL_FIELDS:
         raise BundleError("bundle model identity fields differ")
     for field in (
-        "run_id", "spec_sha256", "checkpoint_sha256",
-        "model_config_fingerprint", "tokenizer_fingerprint",
+        "run_id",
+        "spec_sha256",
+        "checkpoint_sha256",
+        "model_config_fingerprint",
+        "tokenizer_fingerprint",
     ):
         if field == "run_id":
             if not isinstance(model[field], str) or not model[field]:
@@ -249,7 +251,10 @@ def verify_bundle(directory: str | Path) -> VerifiedBundle:
     ):
         raise BundleError("model.backbone_revision is not a Git commit digest")
     for field in (
-        "generation", "checkpoint_size_bytes", "pointer_size", "maximum_length",
+        "generation",
+        "checkpoint_size_bytes",
+        "pointer_size",
+        "maximum_length",
     ):
         _require_positive_integer(model.get(field), f"model.{field}")
     for field in ("backbone", "attention_implementation", "parameter_dtype"):
@@ -257,8 +262,7 @@ def verify_bundle(directory: str | Path) -> VerifiedBundle:
             raise BundleError(f"model.{field} is invalid")
     if model != SHARED_V1_IDENTITY:
         differences = sorted(
-            key for key in MODEL_FIELDS
-            if model.get(key) != SHARED_V1_IDENTITY.get(key)
+            key for key in MODEL_FIELDS if model.get(key) != SHARED_V1_IDENTITY.get(key)
         )
         raise BundleError(f"bundle shared-v1 identity differs: {differences}")
 
@@ -287,7 +291,8 @@ def verify_bundle(directory: str | Path) -> VerifiedBundle:
     for filename in BUNDLE_FILES:
         descriptor = descriptors[filename]
         if not isinstance(descriptor, dict) or set(descriptor) != {
-            "sha256", "size_bytes",
+            "sha256",
+            "size_bytes",
         }:
             raise BundleError(f"bundle file descriptor differs: {filename}")
         _require_sha256(descriptor.get("sha256"), f"files.{filename}.sha256")

@@ -7,6 +7,8 @@ state. It returns one probability distribution per question and generates no
 text.
 
 - Model version: shared-v1, generation 79
+- Parameters: 140,593,792 total; 140,495,232 backbone and 98,560 pointer head
+- Float32 safetensors size: 562,389,888 bytes
 - Backbone: `jhu-clsp/mmBERT-small`
 - Backbone revision: `abc32620dd4f6ab06f5fbe905dc25f310618e09f`
 - Backbone license metadata: MIT
@@ -117,4 +119,6 @@ The mmBERT-small model card declares the backbone under MIT. Haetae's source
 code is Apache-2.0. Those licenses do not determine the terms of third-party
 training datasets. Generation 79 weights are not distributed with the current
 research alpha because several source licenses or redistribution terms remain
-unresolved. See `docs/licenses.md` before publishing any bundle.
+unresolved. A local safetensors release candidate exists for verification
+only; it is not a public download or an open-weight release. See
+`docs/licenses.md` before publishing any bundle.

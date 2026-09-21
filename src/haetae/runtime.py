@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
+import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -62,10 +63,22 @@ def model_config_fingerprint(model) -> str:
     return configuration_fingerprint(model.backbone.config)
 
 
+def widen_logits_cpu_first(value):
+    """Copy accelerator logits to CPU before float64 conversion."""
+    return value.detach().cpu().to(dtype=torch.float64)
+
+
+def distribution_confidence(probabilities: torch.Tensor) -> float:
+    """Return normalized entropy confidence in the interval from zero to one."""
+    count = probabilities.numel()
+    if count < 2:
+        raise HaetaeRuntimeError("confidence needs at least two options")
+    entropy = -(probabilities * probabilities.clamp_min(1e-300).log()).sum().item()
+    return max(0.0, min(1.0, 1.0 - entropy / math.log(count)))
+
+
 def runtime_source_sha256() -> str:
-    return _sha256_bytes(
-        Path(__file__).with_name("shared_v1.py").read_bytes()
-    )
+    return _sha256_bytes(Path(__file__).with_name("shared_v1.py").read_bytes())
 
 
 def resolve_device(name: str) -> torch.device:
@@ -155,8 +168,8 @@ def _validate_runtime_question(question: dict) -> None:
         raise HaetaeRuntimeError("question ID must be a nonempty string")
     if question["type"] not in {"choice", "noul", "score"}:
         raise HaetaeRuntimeError("question type is unsupported")
-    if not isinstance(question["instructions"], str) or not question["instructions"]:
-        raise HaetaeRuntimeError("question instructions must be a nonempty string")
+    if not isinstance(question["instructions"], str):
+        raise HaetaeRuntimeError("question instructions must be a string")
     options = question["options"]
     if (
         not isinstance(options, list)
@@ -214,9 +227,7 @@ class HaetaeRuntime:
                 "question and option content exceeds the input budget"
             )
         if encoded.retained_state_tokens != encoded.state_tokens:
-            raise HaetaeRuntimeError(
-                "state content exceeds the remaining input budget"
-            )
+            raise HaetaeRuntimeError("state content exceeds the remaining input budget")
         with torch.inference_mode():
             output = self.model([encoded])[0]
         if len(output) != len(questions):
@@ -232,20 +243,19 @@ class HaetaeRuntime:
                 raise HaetaeRuntimeError(
                     "model output is not a finite vector over the options"
                 )
-            probabilities = torch.softmax(
-                logits.detach().to(dtype=torch.float64, device="cpu"),
-                dim=-1,
-            )
+            probabilities = torch.softmax(widen_logits_cpu_first(logits), dim=-1)
             values = probabilities.tolist()
-            results.append({
-                "id": question["id"],
-                "type": question["type"],
-                "options": list(question["options"]),
-                "probabilities": values,
-                "choice": int(probabilities.argmax()),
-                "confidence": float(probabilities.max()),
-                "calibrated": False,
-            })
+            results.append(
+                {
+                    "id": question["id"],
+                    "type": question["type"],
+                    "options": list(question["options"]),
+                    "probabilities": values,
+                    "choice": int(probabilities.argmax()),
+                    "confidence": distribution_confidence(probabilities),
+                    "calibrated": False,
+                }
+            )
         return results
 
 

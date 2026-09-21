@@ -4,14 +4,14 @@ Status: active
 
 ## Objective and completion criteria
 
-Build and evaluate a clean-room local System One decision model that is structurally closer to Jev than an NLI wrapper: one packed non-generative forward pass per typed question; dynamic Choice, Noul, and Score outputs; calibrated probabilities; Korean support; and local serving through a Jev-compatible API.
+Build and evaluate a clean-room local typed-decision model that encodes shared state once, isolates question branches inside one packed non-generative model call, supports dynamic Choice, Noul, and Score outputs, includes Korean supervision, and serves a compatible local API.
 
 Completion requires a reproducible completed checkpoint, named held-out evaluations, temperature calibration and selective-risk evidence, permutation and option-perturbation stress tests, local CPU and MPS latency, and a ChatGPT 6 Pro review of the final code and measured results.
 
 ## Repository and external review
 
 - Repository: https://github.com/pumpkinredbean/haetae
-- Branch: `main`
+- Integration branch: `next/integration`
 - Accepted execution-benchmark code commit: `73d2b49c3d95267b135adbcb3af5f53ede3426d3`
 - Checkpoint format 3 implementation commit: `a30ba8b`
 - Exact-review fix commit: `06b8728`
@@ -28,8 +28,8 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - ChatGPT 6 Pro returned `M0 EVIDENCE BOUNDARY ACCEPT` after 40 bundled checks and 30 independent synthetic methods.
 - Integration branch: `next/integration`.
 - Science branch: `next/science-coverage`.
-- Runtime branch: `next/runtime-alpha`.
-- Documentation branch: `next/docs-alpha`.
+- Runtime branch `next/runtime-alpha` is merged into integration and will be retired after integration reaches `main`.
+- Documentation branch `next/docs-alpha` is merged into integration and will be retired after integration reaches `main`.
 - The first M1 submission at commit `ab256f37134ee3546ec1fbb92c53796539094725` received `M1 CACHED COVERAGE HOLD`. The cached metrics reproduced, but the output verifier accepted an empty or escaping output inventory, Choice permutations could hide conflicting semantic labels, common-clean source-macro checks were incomplete, and cached token lengths accepted invalid types.
 - Correction commit `35ee1327b6d53a722d953f067e4df081f88ee6c7` closes those findings, uses centered log probabilities for extreme NLL values, binds the normalization and path-resolution helpers, and records the remaining M3 operational-freeze requirements. Nineteen focused tests pass.
 - Corrected M1 archive SHA-256: `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`.
@@ -40,19 +40,23 @@ Completion requires a reproducible completed checkpoint, named held-out evaluati
 - Regenerated findings: cached primary metrics reproduce within `4.44e-16`; public roles have zero source-parent overlap, rendered-state overlap, and semantic label conflicts; shared-v1 received no emotion or offensive-tweet task supervision; no model forward, optimizer update, or locked-test access occurred.
 - Documentation commit `ae7ba8a26f7554b7f7b3ae297079d142de0b4735` makes shared-v1 current, adds the model card and project policies, and keeps generation 79 weight distribution blocked while dataset terms remain unresolved. Correction commits `56aaad180e432f6a5dc06911b2357d3dd109a9d0` and `4eba4907293a7c5e17cf5a98cbae19c83ccd0700` align the request interface, token limits, upstream Amazon terms, rights boundary, attribution, metric scope, MPS timing qualification, cached-audit provenance, verifier prerequisites, tooling, and release dependencies with the implementation and evidence.
 - ChatGPT 6 Pro returned `M2D DOCUMENTATION ACCEPT` for exact commit `4eba4907293a7c5e17cf5a98cbae19c83ccd0700`. The final diff contains only the two requested wording corrections: `reference.source_sha256` now matches the verifier output, and the README distinguishes registered `contains_locked_data: false` attestations from independent payload inspection. No model runtime, inference, timing, training, or locked-data access occurred during the final review.
-- Next actions: preserve the accepted documentation, complete the measured T04 review, run the separately frozen exported-runtime parity check, and integrate the accepted science, runtime, and documentation branches without changing historical producers.
+- Repository foundation audit: shared-v1 generation 79 has 140,593,792 parameters. The verified float32 safetensors release candidate is 562,389,888 bytes; the immutable research checkpoint is 1,687,348,267 bytes because it also carries optimizer and recovery state.
+- The local bundle manifest, tensor inventory, CLI, `/v1/decide`, and `/v1/systemone` paths load and run on CPU. Seventeen release tests and a clean-wheel smoke pass. The package is versioned `0.2.0a1` with separate serving, research, and development dependency groups.
+- Generation 79 is not a public open-weight release. Dataset redistribution terms remain unresolved, and the exported runtime still needs the frozen 32-request original-versus-bundle parity review.
+- T04 is complete. T05 received `M4 PAIRED REPLAY HOLD` with seven reproducible execution-boundary defects. No T05 model initialization or optimizer update is authorized.
+- Next actions: review the integrated runtime and repository foundation, complete the frozen 32-request parity gate, merge the accepted foundation to `main`, retire the merged documentation and runtime branches, and only then return to the isolated T05 corrections.
 - Status: active.
 
 ## Confirmed model design
 
-- ModernBERT-base backbone.
-- One row per question: `[CLS] state [SEP] instructions [SEP] option1 [SEP] option2 ...`.
-- A shared scalar head reads the bidirectional hidden state of the separator preceding each option.
-- Candidate logits are normalized only within their question.
+- `jhu-clsp/mmBERT-small` backbone at pinned revision `abc32620dd4f6ab06f5fbe905dc25f310618e09f`.
+- One packed request contains a shared state followed by one isolated bidirectional branch per question.
+- Question branches can attend to the state and themselves. The state cannot attend back to questions, and sibling branches cannot attend to one another.
+- Logical branch positions restart after the state. A listwise pointer head compares contextual option representations within each question.
 - Choice order is augmented during training. Score order and Noul yes-first semantics remain fixed.
-- Hard or soft cross-entropy plus Brier is the baseline objective. Cross-entropy plus ranked probability score for Score is the first planned loss ablation.
-- The mixture contains 13 sources, including KLUE-YNAT and NSMC for Korean.
-- Calibration claims must identify the dataset and deployment conditions. Selective action uses a one-sided binomial risk bound.
+- The objective averages question losses within each request and then averages requests. It combines cross-entropy, multiclass Brier, and an ordinal term for Score.
+- The frozen training population has 15,572 requests and 23,068 questions across English, Korean, synthetic policy, and composition sources.
+- Public-development temperatures are evidence-specific. The portable runtime returns raw softmax probabilities and explicitly reports `calibrated: false`.
 
 ## Updated comparative evidence
 

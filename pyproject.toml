@@ -1,19 +1,49 @@
 [project]
 name = "haetae"
-version = "0.1.0"
+version = "0.2.0a1"
+description = "Local shared-state model for typed decisions"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
+keywords = ["decision-model", "local-inference", "pytorch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
-    "accelerate>=1.15.0",
-    "datasets>=5.0.1",
-    "fastapi>=0.141.1",
-    "numpy>=2.5.3",
-    "pydantic>=2.13.5",
-    "scikit-learn>=1.9.1",
-    "scipy>=1.18.1",
+    "safetensors>=0.7.0",
     "torch>=2.14.0",
     "transformers>=5.17.0",
+]
+
+[project.optional-dependencies]
+serve = [
+    "fastapi>=0.141.1",
+    "pydantic>=2.13.5",
     "uvicorn>=0.53.0",
 ]
+research = [
+    "accelerate>=1.15.0",
+    "datasets>=5.0.1",
+    "numpy>=2.5.3",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.7",
+]
+
+[project.scripts]
+haetae = "haetae.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pumpkinredbean/haetae"
+Issues = "https://github.com/pumpkinredbean/haetae/issues"
+Repository = "https://github.com/pumpkinredbean/haetae"
 
 [build-system]
 requires = ["hatchling"]
