@@ -1,0 +1,20 @@
+name: Documentation correction
+description: Report an unsupported, stale, or unclear statement.
+title: "[Docs]: "
+labels: [documentation]
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Location and current statement
+      description: Link the file and quote the smallest relevant excerpt.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Proposed correction and evidence
+      description: Cite an evidence ID or an authoritative upstream source.
+    validations:
+      required: true
+

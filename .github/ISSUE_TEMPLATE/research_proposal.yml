@@ -1,0 +1,36 @@
+name: Research proposal
+description: Propose an evaluation, diagnostic, or training experiment.
+title: "[Research]: "
+labels: [research]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+      description: State one falsifiable question and why the current evidence does not answer it.
+    validations:
+      required: true
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Frozen protocol
+      description: Describe data roles, metrics, uncertainty, stopping rule, and compute bound.
+    validations:
+      required: true
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Data and license provenance
+      description: List source revisions, licenses, redistribution constraints, and overlap controls.
+    validations:
+      required: true
+  - type: dropdown
+    id: locked
+    attributes:
+      label: Does this require a locked test?
+      options:
+        - "No"
+        - "Yes; explain the promotion gate"
+    validations:
+      required: true
+

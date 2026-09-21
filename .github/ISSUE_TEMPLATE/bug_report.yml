@@ -1,0 +1,37 @@
+name: Bug report
+description: Report reproducible incorrect behavior in code or tooling.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach private artifacts, dataset rows, credentials, or locked-test material.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Full Git commit that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: State what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include commands and public fixture data only.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python, PyTorch, Transformers, device, and install method.
+    validations:
+      required: true
+
