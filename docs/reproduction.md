@@ -37,6 +37,14 @@ unexpected tensor index, and any manifest other than the pinned release
 candidate.
 
 ```bash
+uv run python -c \
+  'from haetae.bundle import verify_bundle; verify_bundle("/path/to/shared-v1-bundle"); print("verified")'
+```
+
+That command verifies hashes and inventory without loading the model or
+running inference. To load the runtime and execute a decision, run:
+
+```bash
 uv run haetae decide \
   --bundle /path/to/shared-v1-bundle \
   --input examples/shared-v1-request.json

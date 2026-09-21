@@ -16,7 +16,7 @@ class RuntimeQuestion(BaseModel):
 
     id: str = Field(min_length=1)
     type: str
-    instructions: str = Field(min_length=1)
+    instructions: str = ""
     options: list[str] = Field(min_length=2, max_length=255)
 
 
@@ -40,7 +40,7 @@ class SystemOneRequest(BaseModel):
 
     state: str | dict[str, Any] | list[Any]
     questions: dict[str, SystemOneQuestion]
-    model: str = "haetae-shared-v1"
+    model: Literal["haetae-shared-v1"] = "haetae-shared-v1"
 
 
 def _render_systemone_value(value: Any, indent: int = 0) -> str:
@@ -146,8 +146,11 @@ def _systemone_decide(runtime, request: SystemOneRequest) -> dict:
                 "confidence": round(decision["confidence"], 4),
             }
     answers = {**nouls, **choices, **scores}
+    model = runtime.bundle.manifest["model"]
     return {
-        "model": request.model,
+        "model": "haetae-shared-v1",
+        "run_id": model["run_id"],
+        "generation": model["generation"],
         "nouls": nouls,
         "choices": choices,
         "scores": scores,

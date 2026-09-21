@@ -68,6 +68,14 @@ def widen_logits_cpu_first(value):
     return value.detach().cpu().to(dtype=torch.float64)
 
 
+def place_float32_model(model, device: torch.device):
+    """Place a locally constructed model without inheriting caller dtype state."""
+    model = model.to(device=device, dtype=torch.float32)
+    if any(tensor.dtype != torch.float32 for tensor in model.state_dict().values()):
+        raise BundleError("constructed model state is not uniformly float32")
+    return model
+
+
 def distribution_confidence(probabilities: torch.Tensor) -> float:
     """Return normalized entropy confidence in the interval from zero to one."""
     count = probabilities.numel()
@@ -136,10 +144,11 @@ def _load_local_model(bundle: VerifiedBundle, device: torch.device):
     model, delimiters = build_shared_state_model(
         config,
         tokenizer,
-        str(device),
+        "cpu",
         pointer_size=identity["pointer_size"],
         attention_implementation=identity["attention_implementation"],
     )
+    model = place_float32_model(model, device)
     if model_config_fingerprint(model) != identity["model_config_fingerprint"]:
         raise BundleError("bundle model configuration fingerprint differs")
 

@@ -68,6 +68,10 @@ def test_factory_exposes_bound_health_and_decision(client):
     assert response.json()["decisions"][0]["choice"] == 1
     assert response.json()["calibrated"] is False
 
+    empty = request()
+    empty["questions"][0]["instructions"] = ""
+    assert client.post("/v1/decide", json=empty).status_code == 200
+
 
 def test_api_rejects_extra_fields_and_runtime_errors(client):
     extra = request()
@@ -102,6 +106,26 @@ def test_systemone_compatibility_endpoint(client):
     }
     assert body["answers"] == body["choices"]
     assert body["calibrated"] is False
+    assert body["model"] == "haetae-shared-v1"
+    assert body["run_id"] == "run-1"
+    assert body["generation"] == 79
+
+
+def test_systemone_rejects_an_unavailable_model_selector(client):
+    response = client.post(
+        "/v1/systemone",
+        json={
+            "model": "not-the-loaded-model",
+            "state": "state",
+            "questions": {
+                "route": {
+                    "type": "choice",
+                    "criteria": {"first": None, "second": None},
+                },
+            },
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_systemone_rejects_ambiguous_noul_criteria(client):
@@ -158,6 +182,13 @@ def test_systemone_normalization_matches_training_adapter():
         ["yes: requires action", "no: no action"],
         ["yes", "no"],
     )
+    identical = api.SystemOneQuestion(
+        type="noul",
+        criteria={"true": "same description", "false": "same description"},
+    )
+    options, names = api._systemone_options(identical)
+    assert options == ["yes: same description", "no: same description"]
+    assert names == ["yes", "no"]
     assert (
         api._render_systemone_value(
             {"ticket": {"priority": "high"}, "flags": ["manual"]}

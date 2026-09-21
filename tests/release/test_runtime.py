@@ -7,6 +7,7 @@ from haetae.runtime import (
     HaetaeRuntime,
     HaetaeRuntimeError,
     distribution_confidence,
+    place_float32_model,
     resolve_device,
     widen_logits_cpu_first,
 )
@@ -120,6 +121,24 @@ def test_runtime_moves_logits_to_cpu_before_widening():
     guarded = DeviceGuard()
     assert widen_logits_cpu_first(guarded) is guarded
     assert guarded.events == ["detach", "cpu", ("to", torch.float64)]
+
+
+def test_runtime_model_ignores_the_callers_default_dtype():
+    original = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(torch.float64)
+        model = torch.nn.Sequential(
+            torch.nn.Linear(2, 2),
+            torch.nn.LayerNorm(2),
+        )
+        assert {parameter.dtype for parameter in model.parameters()} == {torch.float64}
+        placed = place_float32_model(model, torch.device("cpu"))
+        assert {tensor.dtype for tensor in placed.state_dict().values()} == {
+            torch.float32
+        }
+        assert torch.get_default_dtype() == torch.float64
+    finally:
+        torch.set_default_dtype(original)
 
 
 @pytest.mark.parametrize(

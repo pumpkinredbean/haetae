@@ -57,6 +57,16 @@ jobs:
       - name: Build and install the wheel
         run: |
           uv build --wheel --out-dir dist
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          wheel = next(Path("dist").glob("haetae-*.whl"))
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          for required in ("LICENSE", "NOTICE"):
+              assert any(name.endswith(f"/licenses/{required}") for name in names)
+          PY
           uv venv --python 3.13 .ci-wheel-venv
           wheel=$(find dist -maxdepth 1 -name 'haetae-*.whl' -print -quit)
           test -n "$wheel"

@@ -83,8 +83,9 @@ the corrected exploratory audit archive has SHA-256
 `ad503e2520368393f1533a3ddbb41522750ed40afc988fd932d41d0df48b0990`
 and manifest content SHA-256
 `dacbfd8061eed3623e39f6b3413748bf4a2183e16318df07fb51fc344abbc11c`.
-The next frozen experiment tests whether the failures come from task/readout
-binding before any additional training is considered.
+The fixed-weight task-binding diagnostic is complete. The follow-up T05
+bounded-supervision experiment remains held at pre-run review, before model
+initialization or training.
 
 See [the current research status](docs/research-status.md),
 [model card](models/shared-v1/README.md), and
@@ -152,6 +153,9 @@ request that cannot preserve every option within the input budget is rejected.
 This compatibility endpoint is part of the shared-v1 release-candidate
 runtime. It returns uncalibrated probabilities and reports
 `calibrated: false`. It does not make shared-v1 a deployed service.
+`confidence` is normalized distribution concentration,
+`1 - entropy(probabilities) / log(option_count)`. It is not an estimated
+probability that the selected answer is correct.
 
 ## Repository map
 
