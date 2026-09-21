@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: latest-known
+
+      - name: Install Python
+        run: uv python install 3.13
+
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra serve --extra research --extra dev
+
+      - name: Run tests
+        run: uv run python -m pytest -q
+
+      - name: Check release code
+        run: |
+          uv run ruff check \
+            src/haetae/__init__.py \
+            src/haetae/api.py \
+            src/haetae/bundle.py \
+            src/haetae/cli.py \
+            src/haetae/runtime.py \
+            tests/release \
+            tools/release
+          uv run ruff format --check \
+            src/haetae/__init__.py \
+            src/haetae/api.py \
+            src/haetae/bundle.py \
+            src/haetae/cli.py \
+            src/haetae/runtime.py \
+            tests/release \
+            tools/release
+
+      - name: Build and install the wheel
+        run: |
+          uv build --wheel --out-dir dist
+          uv venv --python 3.13 .ci-wheel-venv
+          wheel=$(find dist -maxdepth 1 -name 'haetae-*.whl' -print -quit)
+          test -n "$wheel"
+          uv pip install --python .ci-wheel-venv/bin/python "${wheel}[serve]"
+          .ci-wheel-venv/bin/haetae --help
+          cd /tmp
+          "$GITHUB_WORKSPACE/.ci-wheel-venv/bin/python" -c \
+            'import haetae, haetae.api; print(haetae.__version__)'

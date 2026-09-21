@@ -180,8 +180,16 @@ def _validate_runtime_question(question: dict) -> None:
         raise HaetaeRuntimeError("question options must contain 2 to 255 strings")
     if len(set(options)) != len(options):
         raise HaetaeRuntimeError("question options must be unique")
-    if question["type"] == "noul" and options != ["yes", "no"]:
-        raise HaetaeRuntimeError("Noul options must be yes then no")
+    if question["type"] == "noul":
+        expected = ("yes", "no")
+        if len(options) != 2 or any(
+            option != name
+            and not (option.startswith(f"{name}: ") and len(option) > len(f"{name}: "))
+            for option, name in zip(options, expected)
+        ):
+            raise HaetaeRuntimeError(
+                "Noul options must be yes then no, with optional descriptions"
+            )
 
 
 def _validate_state(state: Any) -> None:

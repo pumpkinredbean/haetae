@@ -95,7 +95,7 @@ See [the current research status](docs/research-status.md),
 Install the runtime and optional HTTP server dependencies:
 
 ```bash
-uv sync --extra serve
+uv sync --frozen --extra serve
 ```
 
 The bundle path must contain the exact pinned `model.safetensors`, tokenizer,

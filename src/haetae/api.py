@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -31,7 +32,7 @@ class SystemOneQuestion(BaseModel):
 
     type: Literal["choice", "noul", "score"]
     instructions: str = ""
-    criteria: dict[str, str | None] | list[str] | None = None
+    criteria: dict[str, Any] | list[Any] | None = None
 
 
 class SystemOneRequest(BaseModel):
@@ -40,6 +41,36 @@ class SystemOneRequest(BaseModel):
     state: str | dict[str, Any] | list[Any]
     questions: dict[str, SystemOneQuestion]
     model: str = "haetae-shared-v1"
+
+
+def _render_systemone_value(value: Any, indent: int = 0) -> str:
+    pad = "  " * indent
+    if value is None:
+        return ""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise HaetaeRuntimeError("SystemOne values must contain finite numbers")
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return "\n".join(
+            f"{pad}- {_render_systemone_value(item, indent + 1).lstrip()}"
+            for item in value
+        )
+    if isinstance(value, dict):
+        return "\n".join(
+            (
+                f"{pad}{key}:\n{_render_systemone_value(item, indent + 1)}"
+                if isinstance(item, (dict, list))
+                else f"{pad}{key}: {_render_systemone_value(item)}"
+            )
+            for key, item in value.items()
+        )
+    raise HaetaeRuntimeError("SystemOne values must contain JSON-compatible data")
+
+
+def _systemone_option(name: str, description: Any) -> str:
+    rendered = _render_systemone_value(description)
+    return name if not rendered else f"{name}: {rendered}"
 
 
 def _systemone_options(question: SystemOneQuestion) -> tuple[list[str], list[str]]:
@@ -51,25 +82,24 @@ def _systemone_options(question: SystemOneQuestion) -> tuple[list[str], list[str
             raise HaetaeRuntimeError(
                 "Noul criteria must contain exactly true and false"
             )
-        descriptions = [criteria["true"], criteria["false"]]
-        options = [
-            fallback if description in (None, "") else description
-            for fallback, description in zip(("yes", "no"), descriptions)
-        ]
-        return options, ["yes", "no"]
+        return [
+            _systemone_option("yes", criteria["true"]),
+            _systemone_option("no", criteria["false"]),
+        ], ["yes", "no"]
     if isinstance(criteria, dict):
         if len(criteria) < 2:
             raise HaetaeRuntimeError("Choice and Score need at least two criteria")
         names = list(criteria)
         options = [
-            name if description in (None, "") else f"{name}: {description}"
+            _systemone_option(name, description)
             for name, description in criteria.items()
         ]
         return options, names
     if isinstance(criteria, list) and len(criteria) >= 2:
-        if any(not isinstance(item, str) or not item for item in criteria):
-            raise HaetaeRuntimeError("criteria list must contain nonempty strings")
-        return list(criteria), list(criteria)
+        rendered = [_render_systemone_value(item) for item in criteria]
+        if any(not item for item in rendered):
+            raise HaetaeRuntimeError("criteria list must contain nonempty values")
+        return rendered, rendered
     raise HaetaeRuntimeError("Choice and Score require at least two criteria")
 
 
@@ -82,19 +112,16 @@ def _systemone_decide(runtime, request: SystemOneRequest) -> dict:
         if not identifier:
             raise HaetaeRuntimeError("question IDs must be nonempty")
         options, names = _systemone_options(question)
-        runtime_type = question.type
-        if question.type == "noul" and options != ["yes", "no"]:
-            runtime_type = "choice"
         prepared.append(
             {
                 "id": identifier,
-                "type": runtime_type,
+                "type": question.type,
                 "instructions": question.instructions,
                 "options": options,
             }
         )
         metadata.append((identifier, question.type, names))
-    decisions = runtime.decide(request.state, prepared)
+    decisions = runtime.decide(_render_systemone_value(request.state), prepared)
     nouls, choices, scores = {}, {}, {}
     for decision, (identifier, primitive, names) in zip(decisions, metadata):
         probabilities = decision["probabilities"]

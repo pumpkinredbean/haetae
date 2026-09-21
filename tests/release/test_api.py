@@ -14,8 +14,10 @@ class Runtime:
             "model": {"run_id": "run-1", "generation": 79},
         }
     )
+    last_call = None
 
     def decide(self, state, questions):
+        self.last_call = (state, questions)
         if state == "reject":
             raise HaetaeRuntimeError("rejected by runtime")
         return [
@@ -33,8 +35,11 @@ class Runtime:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(api, "load_runtime", lambda bundle, device: Runtime())
-    return TestClient(api.create_app("local-bundle", device="cpu"))
+    loaded = Runtime()
+    monkeypatch.setattr(api, "load_runtime", lambda bundle, device: loaded)
+    client = TestClient(api.create_app("local-bundle", device="cpu"))
+    client.runtime = loaded
+    return client
 
 
 def request(state="state"):
@@ -114,3 +119,48 @@ def test_systemone_rejects_ambiguous_noul_criteria(client):
     )
     assert response.status_code == 422
     assert "exactly true and false" in response.json()["detail"]
+
+
+def test_systemone_preserves_noul_labels_and_renders_structured_state(client):
+    response = client.post(
+        "/v1/systemone",
+        json={
+            "state": {"ticket": {"priority": "high"}, "flags": ["manual"]},
+            "questions": {
+                "urgent": {
+                    "type": "noul",
+                    "criteria": {
+                        "true": "requires immediate handling",
+                        "false": "can wait",
+                    },
+                },
+            },
+        },
+    )
+    assert response.status_code == 200
+    state, questions = client.runtime.last_call
+    assert state == "ticket:\n  priority: high\nflags:\n  - manual"
+    assert questions[0] == {
+        "id": "urgent",
+        "type": "noul",
+        "instructions": "",
+        "options": ["yes: requires immediate handling", "no: can wait"],
+    }
+    assert response.json()["nouls"]["urgent"] == {"noul": 0.25}
+
+
+def test_systemone_normalization_matches_training_adapter():
+    question = api.SystemOneQuestion(
+        type="noul",
+        criteria={"true": "requires action", "false": "no action"},
+    )
+    assert api._systemone_options(question) == (
+        ["yes: requires action", "no: no action"],
+        ["yes", "no"],
+    )
+    assert (
+        api._render_systemone_value(
+            {"ticket": {"priority": "high"}, "flags": ["manual"]}
+        )
+        == "ticket:\n  priority: high\nflags:\n  - manual"
+    )

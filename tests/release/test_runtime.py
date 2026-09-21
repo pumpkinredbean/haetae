@@ -81,6 +81,21 @@ def test_runtime_returns_raw_probabilities_without_calibration_claim():
     )
 
 
+def test_runtime_accepts_described_noul_options():
+    loaded = runtime()
+    result = loaded.decide(
+        "state",
+        [
+            question(
+                type="noul",
+                options=["yes: requires action", "no: no action"],
+            )
+        ],
+    )
+    assert result[0]["type"] == "noul"
+    assert result[0]["choice"] == 1
+
+
 def test_runtime_moves_logits_to_cpu_before_widening():
     class DeviceGuard:
         def __init__(self):
@@ -111,6 +126,7 @@ def test_runtime_moves_logits_to_cpu_before_widening():
     "bad_question,message",
     [
         (question(type="noul"), "Noul options"),
+        (question(type="noul", options=["yes: ", "no"]), "Noul options"),
         (question(options=["same", "same"]), "unique"),
         (question(extra=True), "fields differ"),
     ],

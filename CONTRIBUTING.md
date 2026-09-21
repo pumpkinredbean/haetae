@@ -9,17 +9,32 @@ and whether the change runs model inference or optimizer updates. Read
 ## Development setup
 
 ```bash
-uv sync --frozen
-PYTHONPATH=. uv run --with pytest pytest -q
-uv run --with ruff ruff check .
+uv sync --frozen --extra serve --extra research --extra dev
+uv run python -m pytest -q
+uv run ruff check \
+  src/haetae/__init__.py \
+  src/haetae/api.py \
+  src/haetae/bundle.py \
+  src/haetae/cli.py \
+  src/haetae/runtime.py \
+  tests/release \
+  tools/release
+uv run ruff format --check \
+  src/haetae/__init__.py \
+  src/haetae/api.py \
+  src/haetae/bundle.py \
+  src/haetae/cli.py \
+  src/haetae/runtime.py \
+  tests/release \
+  tools/release
 ```
 
-`pytest` and `ruff` are explicit ephemeral development tools in these commands;
-they are not runtime dependencies in the current historical package metadata.
+The Ruff target is intentionally limited to the maintained release surface.
+Historical research producers are immutable evidence inputs and are covered by
+regression tests rather than formatting changes.
 
 Run focused tests while developing. Run the full available suite before a
-pull request when the locked historical environment is installed. Tests must
-not fetch or open a locked evaluation split.
+pull request. Tests must not fetch or open a locked evaluation split.
 
 ## Research changes
 

@@ -82,5 +82,9 @@ boundaries before another review; neither seed-17 arm is authorized.
    weights.
 2. Complete the 32-request parity review between the exported data-only bundle
    and the original generation 79 checkpoint.
-3. Pass clean-wheel tests for the portable runtime and HTTP extras.
-4. Publish only aggregate qualified evidence. Locked tests remain unopened.
+3. Publish only aggregate qualified evidence. Locked tests remain unopened.
+
+The portable runtime and HTTP extras have passed a clean-wheel install and
+CPU smoke test. Continuous integration repeats the repository tests, release
+surface checks, wheel build, isolated install, CLI import, and HTTP-extra
+import without downloading model weights.
