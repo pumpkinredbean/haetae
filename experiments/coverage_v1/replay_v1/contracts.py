@@ -340,7 +340,7 @@ def assert_reviewed_identity(
 ) -> None:
     if not allow_reviewed_execution:
         raise ContractError("reviewed execution requires an explicit allow flag")
-    if SHA256_PATTERN.fullmatch(reviewed_commit) is None:
+    if re.fullmatch(r"[0-9a-f]{40}", reviewed_commit) is None:
         raise ContractError("reviewed commit is not a full Git SHA")
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=repository, check=True,
